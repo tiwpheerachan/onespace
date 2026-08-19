@@ -12,7 +12,7 @@ import { type DirectoryPerson, PersonSearch } from "@/components/PersonSearch";
 import { Avatar, Badge, CheckPill, EmptyState, Field, Modal } from "@/components/ui";
 import { usePortal } from "@/lib/data/store";
 import { usePrefs } from "@/lib/i18n/provider";
-import { APP_CATEGORIES, CARD_LAYOUTS, type AppCategory, type AppMaintainer, type CardLayout, type AppStatus, type PortalApp } from "@/lib/types";
+import { APP_CATEGORIES, LOGO_SHAPES, type AppCategory, type AppMaintainer, type LogoShape, type AppStatus, type PortalApp } from "@/lib/types";
 import { cn, hexToRgba, initials, isVideoSrc, normalise, uid } from "@/lib/utils";
 
 type EditorTab = "general" | "sso" | "schema";
@@ -471,42 +471,32 @@ export default function AdminAppsPage() {
               </div>
 
               <div>
-                <p className="label">{t.apps.layout}</p>
+                <p className="label">{t.apps.logoShape}</p>
                 <div className="grid grid-cols-3 gap-1.5">
-                  {CARD_LAYOUTS.map((lay) => {
-                    const active = (draft.cardLayout ?? "standard") === lay;
+                  {LOGO_SHAPES.map((sh) => {
+                    const active = (draft.logoShape ?? "rounded") === sh;
                     const label =
-                      lay === "standard" ? t.apps.layoutStandard : lay === "poster" ? t.apps.layoutPoster : t.apps.layoutCompact;
+                      sh === "rounded" ? t.apps.shapeRounded : sh === "circle" ? t.apps.shapeCircle : t.apps.shapePortrait;
                     return (
                       <button
-                        key={lay}
-                        onClick={() => patch({ cardLayout: lay as CardLayout })}
+                        key={sh}
+                        onClick={() => patch({ logoShape: sh as LogoShape })}
                         className={cn(
-                          "flex flex-col items-center gap-1.5 rounded-xl border p-2 transition",
+                          "flex flex-col items-center gap-2 rounded-xl border p-3 transition",
                           active ? "border-brand-500 bg-brand-50/60 dark:bg-brand-500/10" : "border-line hover:border-brand-300",
                         )}
                       >
-                        {/* tiny glyph of the layout shape */}
-                        <span className="flex h-9 w-full items-end justify-center gap-0.5 rounded-md bg-canvas p-1">
-                          {lay === "standard" && (
-                            <span className="flex w-8 flex-col gap-0.5">
-                              <span className="h-3 rounded-sm" style={{ background: draft.color }} />
-                              <span className="h-1 rounded-sm bg-line" />
-                              <span className="h-1 w-2/3 rounded-sm bg-line" />
-                            </span>
-                          )}
-                          {lay === "poster" && (
-                            <span className="h-7 w-5 rounded-sm" style={{ background: draft.color }} />
-                          )}
-                          {lay === "compact" && (
-                            <span className="flex w-8 items-center gap-1">
-                              <span className="h-4 w-4 rounded-sm" style={{ background: draft.color }} />
-                              <span className="flex flex-1 flex-col gap-0.5">
-                                <span className="h-1 rounded-sm bg-line" />
-                                <span className="h-1 w-2/3 rounded-sm bg-line" />
-                              </span>
-                            </span>
-                          )}
+                        {/* live glyph of the logo shape, in the app colour */}
+                        <span
+                          className="flex items-center justify-center font-display text-[11px] font-bold text-white"
+                          style={{
+                            width: sh === "portrait" ? 22 : 30,
+                            height: sh === "portrait" ? 30 : 30,
+                            borderRadius: sh === "circle" ? 9999 : 9,
+                            background: draft.color,
+                          }}
+                        >
+                          {(draft.shortName || initials(draft.name || "App")).slice(0, 2)}
                         </span>
                         <span className={cn("text-[11px] font-semibold", active ? "text-ink" : "text-ink-mute")}>
                           {label}
@@ -515,7 +505,7 @@ export default function AdminAppsPage() {
                     );
                   })}
                 </div>
-                <p className="mt-2 text-[11.5px] leading-relaxed text-ink-mute">{t.apps.layoutHint}</p>
+                <p className="mt-2 text-[11.5px] leading-relaxed text-ink-mute">{t.apps.logoShapeHint}</p>
               </div>
 
               <div>
