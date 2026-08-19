@@ -1,18 +1,10 @@
-"use client";
+import { redirect } from "next/navigation";
 
-import { useRouter } from "next/navigation";
-import { useEffect } from "react";
-import { usePortal } from "@/lib/data/store";
-import { Splash } from "@/components/Splash";
-
+// Server-side redirect to the sign-in page. Doing this on the server (rather than
+// a client-side router.replace after the store loads) avoids the cold-start
+// "Not Found" flash on platforms that spin the instance down: there is no RSC
+// soft-navigation to miss. Signed-in visitors are bounced on to /dashboard by
+// the login page's own guard.
 export default function Home() {
-  const router = useRouter();
-  const { loading, currentUser } = usePortal();
-
-  useEffect(() => {
-    if (loading) return;
-    router.replace(currentUser ? "/dashboard" : "/login");
-  }, [loading, currentUser, router]);
-
-  return <Splash />;
+  redirect("/login");
 }
