@@ -53,7 +53,7 @@ export function resetLocal(): PortalSnapshot {
 
 type AppAuthz = Pick<
   PortalApp,
-  "sso" | "resources" | "capabilities" | "appRoles" | "grants" | "coverUrl" | "longDescription" | "maintainer"
+  "sso" | "resources" | "capabilities" | "appRoles" | "grants" | "coverUrl" | "cardLayout" | "longDescription" | "maintainer"
 >;
 
 type AppRow = {
@@ -92,6 +92,7 @@ const toApp = (r: AppRow): PortalApp => {
     sortOrder: r.sort_order ?? 0,
     createdAt: r.created_at,
     coverUrl: authz.coverUrl ?? null,
+    cardLayout: authz.cardLayout ?? "standard",
     longDescription: authz.longDescription ?? "",
     maintainer: authz.maintainer ?? null,
     sso: authz.sso,
@@ -118,6 +119,7 @@ const fromApp = (a: PortalApp) => ({
   sort_order: a.sortOrder,
   authz: {
     coverUrl: a.coverUrl ?? null,
+    cardLayout: a.cardLayout ?? "standard",
     longDescription: a.longDescription ?? "",
     maintainer: a.maintainer ?? null,
     sso: a.sso ?? null,

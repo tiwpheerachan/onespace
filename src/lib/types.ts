@@ -53,8 +53,10 @@ export interface PortalApp {
   version: string;
   sortOrder: number;
   createdAt: string;
-  /** Optional banner image for the app card; falls back to a colour cover. */
+  /** Optional banner image OR looping video for the app card; falls back to a colour cover. */
   coverUrl?: string | null;
+  /** How this app's card is shaped on the dashboard. */
+  cardLayout?: CardLayout;
   /** A richer, multi-paragraph write-up shown in the detail sheet. */
   longDescription?: string;
   /** Who to contact about this app — shown with a profile on the card + detail. */
@@ -66,6 +68,10 @@ export interface PortalApp {
   appRoles?: AppRole[];
   grants?: AppGrant[];
 }
+
+/** Card shape presets: a standard tile, a tall poster, or a compact row. */
+export type CardLayout = "standard" | "poster" | "compact";
+export const CARD_LAYOUTS: CardLayout[] = ["standard", "poster", "compact"];
 
 /** The person who owns / supports an app — "กรุณาติดต่อ …". */
 export interface AppMaintainer {

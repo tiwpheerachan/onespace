@@ -16,7 +16,7 @@ import { ProgressiveBlur } from "@/components/ui/progressive-blur-card";
 import { Avatar, Badge, Modal } from "@/components/ui";
 import { usePrefs } from "@/lib/i18n/provider";
 import type { PortalApp, Role } from "@/lib/types";
-import { cn, formatDateTime, hexToRgba, initials } from "@/lib/utils";
+import { cn, formatDateTime, hexToRgba, initials, isVideoSrc } from "@/lib/utils";
 
 function hostOf(url: string) {
   try {
@@ -101,7 +101,16 @@ export function AppDetail({
         <div className="space-y-5">
           {/* cover banner with progressive blur */}
           <div className="relative h-40 overflow-hidden rounded-2xl border border-line">
-            {app.coverUrl ? (
+            {app.coverUrl && isVideoSrc(app.coverUrl) ? (
+              <video
+                src={app.coverUrl}
+                autoPlay
+                loop
+                muted
+                playsInline
+                className="absolute inset-0 h-full w-full object-cover"
+              />
+            ) : app.coverUrl ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img src={app.coverUrl} alt="" className="absolute inset-0 h-full w-full object-cover" />
             ) : (

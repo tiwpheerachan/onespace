@@ -58,3 +58,10 @@ export function relativeTime(value: string | null, locale: string) {
 export function normalise(text: string) {
   return text.toLowerCase().normalize("NFKD");
 }
+
+/** True when a cover source is a video (by extension or data-URL mime). */
+export function isVideoSrc(src?: string | null): boolean {
+  if (!src) return false;
+  if (src.startsWith("data:")) return src.startsWith("data:video");
+  return /\.(mp4|webm|ogg|ogv|mov|m4v)(\?|#|$)/i.test(src);
+}

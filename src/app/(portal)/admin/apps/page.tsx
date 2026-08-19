@@ -4,6 +4,7 @@ import { motion } from "framer-motion";
 import { Boxes, ExternalLink, ImagePlus, KeyRound, Layers, Pencil, Plus, Search, Settings2, ShieldCheck, Trash2, Upload, UserRound, X } from "lucide-react";
 import { useMemo, useRef, useState } from "react";
 import { AppLogo } from "@/components/AppLogo";
+import { AppTile } from "@/components/AppTile";
 import { SchemaTab, SsoTab } from "@/components/AppAuthzTabs";
 import { Confirm } from "@/components/Confirm";
 import { PageHeader } from "@/components/PageHeader";
@@ -11,8 +12,8 @@ import { type DirectoryPerson, PersonSearch } from "@/components/PersonSearch";
 import { Avatar, Badge, CheckPill, EmptyState, Field, Modal } from "@/components/ui";
 import { usePortal } from "@/lib/data/store";
 import { usePrefs } from "@/lib/i18n/provider";
-import { APP_CATEGORIES, type AppCategory, type AppMaintainer, type AppStatus, type PortalApp } from "@/lib/types";
-import { cn, hexToRgba, initials, normalise, uid } from "@/lib/utils";
+import { APP_CATEGORIES, CARD_LAYOUTS, type AppCategory, type AppMaintainer, type CardLayout, type AppStatus, type PortalApp } from "@/lib/types";
+import { cn, hexToRgba, initials, isVideoSrc, normalise, uid } from "@/lib/utils";
 
 type EditorTab = "general" | "sso" | "schema";
 
@@ -49,7 +50,9 @@ export default function AdminAppsPage() {
   const [isNew, setIsNew] = useState(false);
   const [tab, setTab] = useState<EditorTab>("general");
   const [pendingDelete, setPendingDelete] = useState<PortalApp | null>(null);
+  const [coverError, setCoverError] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const coverRef = useRef<HTMLInputElement>(null);
 
   const filtered = useMemo(() => {
     const q = normalise(query.trim());
@@ -90,6 +93,30 @@ export default function AdminAppsPage() {
     if (!file) return;
     const reader = new FileReader();
     reader.onload = () => patch({ logoUrl: String(reader.result) });
+    reader.readAsDataURL(file);
+  };
+
+  // Cover accepts an image or a (looping) video. Uploaded files are embedded as
+  // data URLs, so we cap the size — big clips are better pasted as a hosted URL.
+  const COVER_MAX_MB = { image: 4, video: 12 };
+  const onCoverFile = (file?: File) => {
+    if (!file) return;
+    setCoverError(null);
+    const isVideo = file.type.startsWith("video");
+    const isImage = file.type.startsWith("image");
+    if (!isVideo && !isImage) {
+      setCoverError(t.apps.coverBadType);
+      return;
+    }
+    const limit = (isVideo ? COVER_MAX_MB.video : COVER_MAX_MB.image) * 1024 * 1024;
+    if (file.size > limit) {
+      setCoverError(
+        t.apps.coverTooBig.replace("{mb}", String(isVideo ? COVER_MAX_MB.video : COVER_MAX_MB.image)),
+      );
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => patch({ coverUrl: String(reader.result) });
     reader.readAsDataURL(file);
   };
 
@@ -429,76 +456,112 @@ export default function AdminAppsPage() {
               </div>
             </div>
 
-            {/* ── live preview ────────────────────────── */}
+            {/* ── live preview — the real card, so every layout is accurate ── */}
             <div className="space-y-4">
               <p className="label">{t.apps.preview}</p>
-              <motion.div layout className="overflow-hidden rounded-2xl border border-line bg-surface shadow-card">
-                {/* cover */}
-                <div className="relative h-28 w-full overflow-hidden">
-                  {draft.coverUrl ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={draft.coverUrl} alt="" className="absolute inset-0 h-full w-full object-cover" />
-                  ) : (
-                    <span
-                      className="absolute inset-0"
-                      style={{
-                        background: `linear-gradient(135deg, ${draft.color}, ${hexToRgba(draft.color, 0.72)} 52%, ${hexToRgba(draft.color, 0.42)})`,
-                      }}
-                    >
-                      <span className="pointer-events-none absolute -right-2 -top-5 select-none font-display text-[86px] font-bold leading-none text-white/15">
-                        {(draft.shortName || initials(draft.name || "New App")).slice(0, 2)}
-                      </span>
-                    </span>
-                  )}
-                  <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/55 via-black/10 to-transparent" />
-                  <div className="absolute right-3 top-3">
-                    <Badge tone={draft.status}>{t.status[draft.status]}</Badge>
-                  </div>
-                  <div className="absolute inset-x-0 bottom-0 flex items-center gap-2.5 p-3">
-                    <AppLogo
-                      app={{
-                        name: draft.name || "New App",
-                        shortName: draft.shortName || initials(draft.name || "New App"),
-                        logoUrl: draft.logoUrl,
-                        color: draft.color,
-                      }}
-                      size={34}
-                      radius={10}
-                      className="ring-2 ring-white/25"
-                    />
-                    <div className="min-w-0">
-                      <p className="truncate font-display text-[13.5px] font-semibold text-white">
-                        {draft.name || "—"}
-                      </p>
-                      <p className="truncate text-[10.5px] text-white/80">{t.cat[draft.category]}</p>
-                    </div>
-                  </div>
+              <div className="pointer-events-none rounded-2xl border border-dashed border-line bg-canvas/40 p-3">
+                <AppTile
+                  app={{ ...draft, name: draft.name || "New App" }}
+                  allowed
+                  pinned={false}
+                  onPin={() => {}}
+                  onLaunch={() => {}}
+                  onDetails={() => {}}
+                />
+              </div>
+
+              <div>
+                <p className="label">{t.apps.layout}</p>
+                <div className="grid grid-cols-3 gap-1.5">
+                  {CARD_LAYOUTS.map((lay) => {
+                    const active = (draft.cardLayout ?? "standard") === lay;
+                    const label =
+                      lay === "standard" ? t.apps.layoutStandard : lay === "poster" ? t.apps.layoutPoster : t.apps.layoutCompact;
+                    return (
+                      <button
+                        key={lay}
+                        onClick={() => patch({ cardLayout: lay as CardLayout })}
+                        className={cn(
+                          "flex flex-col items-center gap-1.5 rounded-xl border p-2 transition",
+                          active ? "border-brand-500 bg-brand-50/60 dark:bg-brand-500/10" : "border-line hover:border-brand-300",
+                        )}
+                      >
+                        {/* tiny glyph of the layout shape */}
+                        <span className="flex h-9 w-full items-end justify-center gap-0.5 rounded-md bg-canvas p-1">
+                          {lay === "standard" && (
+                            <span className="flex w-8 flex-col gap-0.5">
+                              <span className="h-3 rounded-sm" style={{ background: draft.color }} />
+                              <span className="h-1 rounded-sm bg-line" />
+                              <span className="h-1 w-2/3 rounded-sm bg-line" />
+                            </span>
+                          )}
+                          {lay === "poster" && (
+                            <span className="h-7 w-5 rounded-sm" style={{ background: draft.color }} />
+                          )}
+                          {lay === "compact" && (
+                            <span className="flex w-8 items-center gap-1">
+                              <span className="h-4 w-4 rounded-sm" style={{ background: draft.color }} />
+                              <span className="flex flex-1 flex-col gap-0.5">
+                                <span className="h-1 rounded-sm bg-line" />
+                                <span className="h-1 w-2/3 rounded-sm bg-line" />
+                              </span>
+                            </span>
+                          )}
+                        </span>
+                        <span className={cn("text-[11px] font-semibold", active ? "text-ink" : "text-ink-mute")}>
+                          {label}
+                        </span>
+                      </button>
+                    );
+                  })}
                 </div>
-                {/* body */}
-                <div className="p-3.5">
-                  <p className="line-clamp-2 min-h-[32px] text-[12px] leading-relaxed text-ink-soft">
-                    {draft.description || "—"}
-                  </p>
-                  {draft.maintainer?.name && (
-                    <div className="mt-2.5 flex items-center gap-2">
-                      <Avatar name={draft.maintainer.name} src={draft.maintainer.avatarUrl} size={20} color={draft.color} />
-                      <span className="truncate text-[11px] text-ink-mute">
-                        {t.apps.maintainedBy}{" "}
-                        <span className="font-semibold text-ink-soft">{draft.maintainer.name}</span>
-                      </span>
-                    </div>
-                  )}
-                </div>
-              </motion.div>
+                <p className="mt-2 text-[11.5px] leading-relaxed text-ink-mute">{t.apps.layoutHint}</p>
+              </div>
 
               <div>
                 <p className="label">{t.apps.coverImage}</p>
                 <input
-                  className="input"
-                  placeholder="https://…/cover.jpg"
-                  value={draft.coverUrl ?? ""}
-                  onChange={(e) => patch({ coverUrl: e.target.value || null })}
+                  className="input mb-2"
+                  placeholder="https://…/cover.mp4 · .jpg"
+                  value={draft.coverUrl && !draft.coverUrl.startsWith("data:") ? draft.coverUrl : ""}
+                  onChange={(e) => {
+                    setCoverError(null);
+                    patch({ coverUrl: e.target.value || null });
+                  }}
                 />
+                <div className="flex gap-2">
+                  <button onClick={() => coverRef.current?.click()} className="btn-ghost btn-sm flex-1">
+                    <Upload className="h-3.5 w-3.5" />
+                    {t.apps.coverUpload}
+                  </button>
+                  {draft.coverUrl && (
+                    <button
+                      onClick={() => {
+                        setCoverError(null);
+                        patch({ coverUrl: null });
+                      }}
+                      className="btn-ghost btn-sm"
+                    >
+                      <ImagePlus className="h-3.5 w-3.5" />
+                      {t.apps.remove}
+                    </button>
+                  )}
+                </div>
+                <input
+                  ref={coverRef}
+                  type="file"
+                  accept="image/*,video/*"
+                  hidden
+                  onChange={(e) => onCoverFile(e.target.files?.[0])}
+                />
+                {coverError && (
+                  <p className="mt-2 text-[11.5px] font-medium text-rose-600 dark:text-rose-400">{coverError}</p>
+                )}
+                {draft.coverUrl?.startsWith("data:") && (
+                  <p className="mt-2 flex items-center gap-1.5 text-[11px] font-medium text-emerald-600 dark:text-emerald-400">
+                    {isVideoSrc(draft.coverUrl) ? t.apps.coverVideoReady : t.apps.coverImageReady}
+                  </p>
+                )}
                 <p className="mt-2 text-[11.5px] leading-relaxed text-ink-mute">{t.apps.coverHint}</p>
               </div>
 
