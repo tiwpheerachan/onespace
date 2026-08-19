@@ -1,0 +1,35 @@
+# Render Blueprint — deploy ONE SPACE as a Node web service.
+# In Render: New + → Blueprint → pick this repo. Then fill the three
+# secret values (they are marked sync:false so they never live in git).
+services:
+  - type: web
+    name: onespace
+    runtime: node
+    plan: free
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: "20"
+      # NEXT_PUBLIC_* are inlined at BUILD time — Render exposes env vars to the
+      # build step too, so setting them in the dashboard is enough.
+      - key: NEXT_PUBLIC_SUPABASE_URL
+        sync: false
+      - key: NEXT_PUBLIC_SUPABASE_ANON_KEY
+        sync: false
+      # Server-only. Required once Central Login (SSO) is enabled.
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      # ── Central Login (SSO) — fill these to enable the "Sign in with
+      #    Central Login" button. Leave unset to keep email/password only.
+      - key: NEXT_PUBLIC_SSO_ENABLED
+        value: "1"
+      - key: NEXT_PUBLIC_APP_URL
+        value: https://onespace-ose7.onrender.com
+      - key: SSO_BASE_URL
+        value: https://sso.shd-technology.co.th
+      - key: SSO_CLIENT_ID
+        sync: false
+      - key: SSO_CLIENT_SECRET
+        sync: false
