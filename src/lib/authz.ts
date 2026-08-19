@@ -63,32 +63,57 @@ export function rolesTouching(roles: AppRole[], resourceKey: string) {
   return roles.filter((r) => levelRank(effectiveLevel(r, resourceKey)) > 0);
 }
 
+/** The base level a single grant confers — from its role, or set directly. */
+export function grantBaseLevel(app: PortalApp, grant: AppGrant): ResourceLevel {
+  if (grant.roleKey) return (app.appRoles ?? []).find((r) => r.key === grant.roleKey)?.baseLevel ?? "none";
+  return grant.level ?? "none";
+}
+
+/** The level a single grant confers on one resource — role-based or direct. */
+export function resolveGrantLevel(app: PortalApp, grant: AppGrant, resourceKey: string): ResourceLevel {
+  if (grant.roleKey) {
+    const role = (app.appRoles ?? []).find((r) => r.key === grant.roleKey);
+    return role ? effectiveLevel(role, resourceKey) : "none";
+  }
+  return grant.overrides?.[resourceKey] ?? grant.level ?? "none";
+}
+
 /** Resolve a person's effective access in an app — the shape /verify returns. */
 export function effectiveForUser(app: PortalApp, email: string) {
   const a = withAuthz(app);
-  const roleKeys = a.grants.filter((g) => g.email.toLowerCase() === email.toLowerCase()).map((g) => g.roleKey);
-  const roles = a.appRoles.filter((r) => roleKeys.includes(r.key));
-  const hasAccess = roles.length > 0;
+  const grants = a.grants.filter((g) => g.email.toLowerCase() === email.toLowerCase());
+  const hasAccess = grants.length > 0;
 
-  const baseLevel = roles.reduce<ResourceLevel>(
-    (top, r) => (levelRank(r.baseLevel) > levelRank(top) ? r.baseLevel : top),
-    "none",
-  );
+  const maxLevel = (fn: (g: AppGrant) => ResourceLevel) =>
+    grants.reduce<ResourceLevel>((top, g) => {
+      const l = fn(g);
+      return levelRank(l) > levelRank(top) ? l : top;
+    }, "none");
+
+  const baseLevel = maxLevel((g) => grantBaseLevel(a, g));
   const resources: Record<string, ResourceLevel> = {};
   for (const res of a.resources) {
-    const lvl = roles.reduce<ResourceLevel>(
-      (top, r) => {
-        const l = effectiveLevel(r, res.key);
-        return levelRank(l) > levelRank(top) ? l : top;
-      },
-      "none",
-    );
-    resources[res.key] = lvl;
+    resources[res.key] = maxLevel((g) => resolveGrantLevel(a, g, res.key));
   }
-  const capabilities = [...new Set(roles.flatMap((r) => r.capabilities))];
-  const canShare = roles.some((r) => r.canShare);
+  const capabilities = [
+    ...new Set(
+      grants.flatMap((g) =>
+        g.roleKey ? a.appRoles.find((r) => r.key === g.roleKey)?.capabilities ?? [] : g.capabilities ?? [],
+      ),
+    ),
+  ];
+  const canShare = grants.some((g) =>
+    g.roleKey ? Boolean(a.appRoles.find((r) => r.key === g.roleKey)?.canShare) : false,
+  );
 
-  return { hasAccess, roles: roleKeys, baseLevel, canShare, resources, capabilities };
+  return {
+    hasAccess,
+    roles: grants.map((g) => g.roleKey).filter((k): k is string => Boolean(k)),
+    baseLevel,
+    canShare,
+    resources,
+    capabilities,
+  };
 }
 
 export function grantCountForRole(grants: AppGrant[], roleKey: string) {

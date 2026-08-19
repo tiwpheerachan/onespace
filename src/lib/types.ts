@@ -95,10 +95,19 @@ export interface AppRole {
   system?: boolean;
 }
 
-/** A person granted a role in an app. */
+/**
+ * A person's access to an app. Two shapes:
+ *  • role-based (advanced / by-app view) → `roleKey`
+ *  • direct (the simple person-first view) → `level` + optional per-resource
+ *    `overrides`. Direct grants need no pre-made role, so an admin can just say
+ *    "this person can Edit here" and, for detail, tweak individual pages.
+ */
 export interface AppGrant {
   email: string;
-  roleKey: string;
+  roleKey?: string;
+  level?: ResourceLevel;
+  overrides?: Record<string, ResourceLevel>;
+  capabilities?: string[];
 }
 
 /** SSO / OIDC connection details for an app (the "identity" layer). */

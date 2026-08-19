@@ -24,7 +24,9 @@ import { PersonSearch } from "@/components/PersonSearch";
 import { Avatar, EmptyState, Field, Modal } from "@/components/ui";
 import {
   effectiveLevel,
+  grantBaseLevel,
   grantCountForRole,
+  resolveGrantLevel,
   standardAppRoles,
   withAuthz,
 } from "@/lib/authz";
@@ -47,10 +49,6 @@ const LEVEL_STYLE: Record<ResourceLevel, string> = {
   edit: "bg-rose-500/20 text-rose-700 dark:text-rose-200",
   manage: "bg-rose-600 text-white",
 };
-
-function levelLabel(t: ReturnType<typeof usePrefs>["t"], l: ResourceLevel) {
-  return l === "none" ? t.access.lvNone : l === "view" ? t.access.lvView : l === "edit" ? t.access.lvEdit : t.access.lvManage;
-}
 
 /** Four-step ordinal control for a resource/base level. */
 function LevelSegmented({
@@ -88,9 +86,10 @@ export default function AccessPage() {
   const { t } = usePrefs();
   const { apps, users, saveApp, can } = usePortal();
 
-  const [viewMode, setViewMode] = useState<"app" | "person">("app");
+  const [viewMode, setViewMode] = useState<"app" | "person">("person");
   const [appId, setAppId] = useState<string | null>(null);
   const [personEmail, setPersonEmail] = useState<string | null>(null);
+  const [expandedApp, setExpandedApp] = useState<string | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [draftRole, setDraftRole] = useState<AppRole | null>(null);
   const [pendingDeleteRole, setPendingDeleteRole] = useState<AppRole | null>(null);
@@ -118,6 +117,15 @@ export default function AccessPage() {
   const app = useMemo(() => apps.find((a) => a.id === appId) ?? null, [apps, appId]);
   const a = app ? withAuthz(app) : null;
 
+  // keep a sensible default role picked in the grant bar
+  useEffect(() => {
+    if (!app) return;
+    const roles = app.appRoles ?? [];
+    if (!grantRoleKey || !roles.some((r) => r.key === grantRoleKey)) {
+      setGrantRoleKey(roles.length ? roles[roles.length - 1].key : "");
+    }
+  }, [app, grantRoleKey]);
+
   const labels = useMemo(
     () => ({ none: t.access.lvNone, view: t.access.lvView, edit: t.access.lvEdit, manage: t.access.lvManage }) as Record<ResourceLevel, string>,
     [t],
@@ -137,38 +145,48 @@ export default function AccessPage() {
   const patchRole = (key: string, p: Partial<AppRole>) =>
     a && setRoles(a.appRoles.map((r) => (r.key === key ? { ...r, ...p } : r)));
 
-  // person view: set one person's role in a given app (one role per app here) —
-  // writes straight to that app's grants, the same store the by-app view uses.
-  const setPersonRole = (targetApp: PortalApp, email: string, roleKey: string) => {
-    const grants = (targetApp.grants ?? []).filter((g) => g.email.toLowerCase() !== email);
-    saveApp({ ...targetApp, grants: roleKey ? [...grants, { email, roleKey }] : grants });
+  // The simple person-first flow writes DIRECT grants (a level, optional per-page
+  // overrides) — no role needed. Editing an existing role-based grant converts it
+  // to a direct one, preserving the levels it currently confers.
+  const directOf = (targetApp: PortalApp, grant?: AppGrant): { level: ResourceLevel; overrides: Record<string, ResourceLevel> } => {
+    if (!grant) return { level: "none", overrides: {} };
+    if (grant.roleKey) {
+      const role = (targetApp.appRoles ?? []).find((r) => r.key === grant.roleKey);
+      return { level: role?.baseLevel ?? "none", overrides: { ...(role?.overrides ?? {}) } };
+    }
+    return { level: grant.level ?? "none", overrides: { ...(grant.overrides ?? {}) } };
   };
+
+  const setPersonLevel = (targetApp: PortalApp, email: string, level: ResourceLevel) => {
+    const others = (targetApp.grants ?? []).filter((g) => g.email.toLowerCase() !== email);
+    // overall level resets the per-page detail — "everything at this level"
+    saveApp({ ...targetApp, grants: level === "none" ? others : [...others, { email, level }] });
+  };
+
+  const setPersonOverride = (targetApp: PortalApp, email: string, resourceKey: string, level: ResourceLevel) => {
+    const grants = targetApp.grants ?? [];
+    const current = grants.find((g) => g.email.toLowerCase() === email);
+    const { level: base, overrides } = directOf(targetApp, current);
+    const next = { ...overrides };
+    if (level === base) delete next[resourceKey];
+    else next[resourceKey] = level;
+    const others = grants.filter((g) => g.email.toLowerCase() !== email);
+    saveApp({ ...targetApp, grants: [...others, { email, level: base === "none" ? "view" : base, overrides: next }] });
+  };
+
   const selectedUser = users.find((u) => u.email.toLowerCase() === personEmail);
 
-  const addGrants = () => {
-    if (!a || !grantRoleKey) return;
-    const emails = grantEmails
-      .split(/[\n,;]+/)
-      .map((s) => s.trim().toLowerCase())
-      .filter((s) => s.includes("@"));
-    if (!emails.length) return;
-    const existing = new Set(a.grants.map((g) => `${g.email}::${g.roleKey}`));
-    const additions = emails
-      .filter((e) => !existing.has(`${e}::${grantRoleKey}`))
-      .map((email) => ({ email, roleKey: grantRoleKey }));
-    setGrants([...a.grants, ...additions]);
+  // grant one person a role in this app (replaces any existing grant for them)
+  const grantPerson = (email: string, roleKey: string) => {
+    if (!a || !roleKey) return;
+    const e = email.trim().toLowerCase();
+    if (!e.includes("@")) return;
+    const others = a.grants.filter((g) => g.email.toLowerCase() !== e);
+    setGrants([...others, { email: e, roleKey }]);
     setGrantEmails("");
   };
-
-  // a person picked from the central directory just drops their email into the box
-  const addEmailToDraft = (email: string) => {
-    const e = email.trim().toLowerCase();
-    if (!e) return;
-    setGrantEmails((prev) => {
-      const list = prev.split(/[\n,;]+/).map((s) => s.trim().toLowerCase()).filter(Boolean);
-      return list.includes(e) ? prev : [...list, e].join("\n");
-    });
-  };
+  const changeGrantRole = (index: number, roleKey: string) =>
+    a && setGrants(a.grants.map((g, i) => (i === index ? { email: g.email, roleKey } : g)));
 
   const saveDraftRole = () => {
     if (!a || !draftRole || !draftRole.name.trim()) return;
@@ -281,92 +299,120 @@ export default function AccessPage() {
       <AccessTabs />
 
       {viewMode === "person" ? (
-        !personEmail ? (
-          <EmptyState icon={<UsersIcon className="h-6 w-6" />} title={t.access.pickPerson} />
-        ) : (
-          <div className="space-y-3">
-            {/* ── person header ── */}
-            <div className="flex items-center gap-3 rounded-2xl border border-line bg-surface p-4 shadow-card">
-              <Avatar name={selectedUser?.name ?? personEmail} src={selectedUser?.avatarUrl} size={44} />
-              <div className="min-w-0">
-                <p className="text-[14px] font-semibold text-ink">{selectedUser?.name ?? personEmail}</p>
-                <p className="font-mono text-[11.5px] text-ink-mute">
-                  {personEmail} ·{" "}
-                  {apps.filter((ap) => (ap.grants ?? []).some((g) => g.email.toLowerCase() === personEmail)).length}{" "}
-                  {t.access.appsGranted}
-                </p>
+        <div className="space-y-5">
+          {/* ── 1. find a person ── */}
+          <div className="rounded-2xl border border-line bg-surface p-4 shadow-card">
+            {directoryEnabled && (
+              <div className="mb-3">
+                <PersonSearch onPick={(email) => setPersonEmail(email.toLowerCase())} />
               </div>
+            )}
+            <p className="mb-2 text-[11px] uppercase tracking-wide text-ink-mute">{t.access.usersList}</p>
+            <div className="flex flex-wrap gap-2">
+              {users.map((u) => {
+                const active = u.email.toLowerCase() === personEmail;
+                return (
+                  <button
+                    key={u.id}
+                    onClick={() => setPersonEmail(u.email.toLowerCase())}
+                    className={cn(
+                      "flex items-center gap-2 rounded-full border py-1 pl-1 pr-3 transition",
+                      active
+                        ? "border-rose-400 bg-rose-50/70 dark:bg-rose-500/10"
+                        : "border-line hover:border-rose-300",
+                    )}
+                  >
+                    <Avatar name={u.name} src={u.avatarUrl} size={24} />
+                    <span className="text-[12.5px] font-medium text-ink">{u.name}</span>
+                  </button>
+                );
+              })}
             </div>
+          </div>
 
-            {/* ── access app-by-app for this person ── */}
-            {apps.map((ap) => {
-              const aa = withAuthz(ap);
-              const roleKey = aa.grants.find((g) => g.email.toLowerCase() === personEmail)?.roleKey ?? "";
-              const role = aa.appRoles.find((r) => r.key === roleKey);
-              return (
-                <div key={ap.id} className="rounded-2xl border border-line bg-surface p-4 shadow-card">
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <div className="flex items-center gap-3">
-                      <AppLogo app={ap} size={36} radius={11} />
-                      <div>
-                        <p className="text-[13.5px] font-semibold text-ink">{ap.name}</p>
-                        <p className="font-mono text-[11px] text-ink-mute">
-                          {aa.resources.length} resources · {aa.capabilities.length} capabilities
-                        </p>
+          {!personEmail ? (
+            <EmptyState icon={<UsersIcon className="h-6 w-6" />} title={t.access.searchOrPick} />
+          ) : (
+            <>
+              {/* selected person */}
+              <div className="flex items-center gap-3 rounded-2xl border border-line bg-surface p-4 shadow-card">
+                <Avatar name={selectedUser?.name ?? personEmail} src={selectedUser?.avatarUrl} size={44} />
+                <div className="min-w-0">
+                  <p className="text-[15px] font-semibold text-ink">{selectedUser?.name ?? personEmail}</p>
+                  <p className="font-mono text-[11.5px] text-ink-mute">
+                    {personEmail} ·{" "}
+                    {apps.filter((ap) => (ap.grants ?? []).some((g) => g.email.toLowerCase() === personEmail)).length}{" "}
+                    {t.access.appsGranted}
+                  </p>
+                </div>
+              </div>
+
+              {/* ── 2. set a level per app, expand for per-page detail ── */}
+              {apps.map((ap) => {
+                const aa = withAuthz(ap);
+                const grant = aa.grants.find((g) => g.email.toLowerCase() === personEmail);
+                const base = grant ? grantBaseLevel(ap, grant) : "none";
+                const expanded = expandedApp === ap.id;
+                return (
+                  <div key={ap.id} className="rounded-2xl border border-line bg-surface p-4 shadow-card">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div className="flex items-center gap-3">
+                        <AppLogo app={ap} size={38} radius={11} />
+                        <div>
+                          <p className="text-[13.5px] font-semibold text-ink">{ap.name}</p>
+                          <p className="font-mono text-[11px] text-ink-mute">
+                            {aa.resources.length} {t.schema.resources}
+                          </p>
+                        </div>
                       </div>
+                      <LevelSegmented
+                        value={base}
+                        onChange={(l) => setPersonLevel(ap, personEmail, l)}
+                        labels={labels}
+                      />
                     </div>
-                    {aa.appRoles.length > 0 ? (
-                      <select
-                        value={roleKey}
-                        onChange={(e) => setPersonRole(ap, personEmail, e.target.value)}
-                        className={cn("input h-9 w-52", roleKey && "border-rose-400 font-semibold text-ink")}
-                      >
-                        <option value="">{t.access.noAccessOpt}</option>
-                        {aa.appRoles.map((r) => (
-                          <option key={r.key} value={r.key}>
-                            {r.name}
-                            {r.baseLevel === "manage" ? ` · ${t.access.lvManage}` : ""}
-                          </option>
-                        ))}
-                      </select>
-                    ) : (
-                      <span className="inline-flex items-center gap-1.5 rounded-lg bg-canvas px-3 py-1.5 text-[12px] font-semibold text-ink-mute">
-                        {aa.sso.enforceAuthz ? t.access.noModelShort : t.access.openToAll}
-                      </span>
+
+                    {base !== "none" && aa.resources.length > 0 && (
+                      <div className="mt-3 border-t border-line pt-3">
+                        <button
+                          onClick={() => setExpandedApp(expanded ? null : ap.id)}
+                          className="flex items-center gap-1.5 text-[12px] font-semibold text-ink-soft transition hover:text-ink"
+                        >
+                          <ChevronDown className={cn("h-4 w-4 transition-transform", expanded && "rotate-180")} />
+                          {t.access.setDetail} · {aa.resources.length}
+                        </button>
+                        {expanded && (
+                          <div className="mt-3 space-y-2">
+                            {aa.resources.map((res) => {
+                              const lvl = grant ? resolveGrantLevel(ap, grant, res.key) : base;
+                              return (
+                                <div
+                                  key={res.key}
+                                  className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-line bg-canvas/40 p-2.5"
+                                >
+                                  <span className="flex min-w-0 items-center gap-2">
+                                    <span className="truncate text-[12.5px] font-medium text-ink">{res.name}</span>
+                                    {res.sensitive && <Lock className="h-3 w-3 shrink-0 text-amber-500" />}
+                                  </span>
+                                  <LevelSegmented
+                                    value={lvl}
+                                    onChange={(l) => setPersonOverride(ap, personEmail, res.key, l)}
+                                    labels={labels}
+                                    size="sm"
+                                  />
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
                     )}
                   </div>
-
-                  {/* effective page / resource access for this person in this app */}
-                  {role && aa.resources.length > 0 && (
-                    <div className="mt-3 border-t border-line pt-3">
-                      <p className="mb-2 text-[10.5px] uppercase tracking-wide text-ink-mute">
-                        {t.access.pageAccess}
-                      </p>
-                      <div className="flex flex-wrap gap-1.5">
-                        {aa.resources.map((res) => {
-                          const lvl = effectiveLevel(role, res.key);
-                          return (
-                            <span
-                              key={res.key}
-                              className={cn(
-                                "inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-[11.5px] font-medium",
-                                LEVEL_STYLE[lvl],
-                              )}
-                            >
-                              {res.sensitive && <Lock className="h-3 w-3" />}
-                              {res.name}
-                              <span className="opacity-70">· {levelLabel(t, lvl)}</span>
-                            </span>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        )
+                );
+              })}
+            </>
+          )}
+        </div>
       ) : !app || !a ? (
         <EmptyState icon={<Layers className="h-6 w-6" />} title={t.access.noApp} />
       ) : (
@@ -425,151 +471,208 @@ export default function AccessPage() {
                     {t.access.addRole}
                   </button>
                 </div>
-                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-                  {a.appRoles.map((role) => {
-                    const members = grantCountForRole(a.grants, role.key);
-                    return (
-                      <div key={role.key} className="group rounded-2xl border border-line bg-surface p-4 shadow-card">
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="flex items-center gap-2">
-                            <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-rose-500/10 text-rose-600 dark:text-rose-300">
-                              <ShieldCheck className="h-4 w-4" />
+                <div className="overflow-x-auto rounded-2xl border border-line bg-surface shadow-card">
+                  <table className="w-full border-collapse text-left">
+                    <thead>
+                      <tr className="border-b border-line bg-canvas/60 text-[10.5px] font-bold uppercase tracking-wide text-ink-mute">
+                        <th className="sticky left-0 z-10 bg-canvas/60 px-4 py-3">{t.roles.title}</th>
+                        <th className="whitespace-nowrap px-3 py-3">{t.access.baseLevel}</th>
+                        {a.resources.map((res) => (
+                          <th key={res.key} className="whitespace-nowrap px-3 py-3 text-center">
+                            <span className="inline-flex items-center gap-1">
+                              {res.sensitive && <Lock className="h-3 w-3 text-amber-500" />}
+                              {res.name}
                             </span>
-                            <div>
-                              <p className="text-[13.5px] font-semibold text-ink">{role.name}</p>
-                              <p className="font-mono text-[11px] text-ink-mute">{role.key}</p>
+                          </th>
+                        ))}
+                        {a.capabilities.map((cap) => (
+                          <th key={cap.key} className="whitespace-nowrap px-3 py-3 text-center">{cap.name}</th>
+                        ))}
+                        <th className="px-3 py-3 text-center">{t.access.members}</th>
+                        <th className="px-2 py-3" />
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {a.appRoles.map((role) => (
+                        <tr key={role.key} className="border-b border-line last:border-0 hover:bg-canvas/40">
+                          <td className="sticky left-0 z-10 bg-surface px-4 py-2.5">
+                            <div className="flex items-center gap-2">
+                              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-rose-500/10 text-rose-600 dark:text-rose-300">
+                                <ShieldCheck className="h-3.5 w-3.5" />
+                              </span>
+                              <span className="min-w-0">
+                                <span className="block truncate text-[13px] font-semibold text-ink">{role.name}</span>
+                                <span className="block truncate font-mono text-[10px] text-ink-mute">{role.key}</span>
+                              </span>
                             </div>
-                          </div>
-                          <div className="flex gap-1 opacity-0 transition group-hover:opacity-100">
-                            <button
-                              onClick={() => setDraftRole({ ...role, overrides: { ...role.overrides } })}
-                              className="rounded-lg p-1.5 text-ink-mute transition hover:bg-canvas hover:text-ink"
+                          </td>
+                          <td className="px-3 py-2.5">
+                            <select
+                              value={role.baseLevel}
+                              onChange={(e) => patchRole(role.key, { baseLevel: e.target.value as ResourceLevel })}
+                              className="h-8 rounded-lg border border-line bg-surface px-2 text-[12px] font-medium text-ink outline-none focus:border-rose-400"
                             >
-                              <Pencil className="h-3.5 w-3.5" />
-                            </button>
-                            {!role.system && (
+                              {RESOURCE_LEVELS.map((l) => (
+                                <option key={l} value={l}>{labels[l]}</option>
+                              ))}
+                            </select>
+                          </td>
+                          {a.resources.map((res) => {
+                            const overridden = role.overrides[res.key] !== undefined;
+                            const lvl = effectiveLevel(role, res.key);
+                            return (
+                              <td key={res.key} className="px-3 py-2.5 text-center">
+                                <select
+                                  value={overridden ? lvl : ""}
+                                  onChange={(e) => {
+                                    const v = e.target.value;
+                                    const overrides = { ...role.overrides };
+                                    if (!v) delete overrides[res.key];
+                                    else overrides[res.key] = v as ResourceLevel;
+                                    patchRole(role.key, { overrides });
+                                  }}
+                                  className={cn(
+                                    "h-8 rounded-lg border px-2 text-[12px] font-medium outline-none focus:border-rose-400",
+                                    overridden
+                                      ? "border-rose-400 bg-rose-50/60 text-ink dark:bg-rose-500/10"
+                                      : "border-line bg-surface text-ink-mute",
+                                  )}
+                                >
+                                  <option value="">· {labels[role.baseLevel]}</option>
+                                  {RESOURCE_LEVELS.map((l) => (
+                                    <option key={l} value={l}>{labels[l]}</option>
+                                  ))}
+                                </select>
+                              </td>
+                            );
+                          })}
+                          {a.capabilities.map((cap) => {
+                            const on = role.capabilities.includes(cap.key);
+                            return (
+                              <td key={cap.key} className="px-3 py-2.5 text-center">
+                                <button
+                                  onClick={() =>
+                                    patchRole(role.key, {
+                                      capabilities: on
+                                        ? role.capabilities.filter((k) => k !== cap.key)
+                                        : [...role.capabilities, cap.key],
+                                    })
+                                  }
+                                  className={cn(
+                                    "mx-auto flex h-6 w-6 items-center justify-center rounded-md border transition",
+                                    on ? "border-transparent bg-rose-600 text-white" : "border-line hover:border-rose-300",
+                                  )}
+                                >
+                                  {on && <Check className="h-3.5 w-3.5" strokeWidth={3} />}
+                                </button>
+                              </td>
+                            );
+                          })}
+                          <td className="px-3 py-2.5 text-center font-mono text-[12px] tabular-nums text-ink-soft">
+                            {grantCountForRole(a.grants, role.key)}
+                          </td>
+                          <td className="px-2 py-2.5">
+                            <div className="flex items-center justify-end gap-0.5">
                               <button
-                                onClick={() => setPendingDeleteRole(role)}
-                                className="rounded-lg p-1.5 text-ink-mute transition hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-500/10"
+                                onClick={() => setDraftRole({ ...role, overrides: { ...role.overrides } })}
+                                className="rounded-lg p-1.5 text-ink-mute transition hover:bg-canvas hover:text-ink"
                               >
-                                <Trash2 className="h-3.5 w-3.5" />
+                                <Pencil className="h-3.5 w-3.5" />
                               </button>
-                            )}
-                          </div>
-                        </div>
-
-                        <div className="mt-3.5 flex items-center justify-between">
-                          <span className="text-[11px] uppercase tracking-wide text-ink-mute">{t.access.baseLevel}</span>
-                          <LevelSegmented
-                            value={role.baseLevel}
-                            onChange={(l) => patchRole(role.key, { baseLevel: l })}
-                            labels={labels}
-                            size="sm"
-                          />
-                        </div>
-
-                        <div className="mt-3 flex items-center justify-between border-t border-line pt-3 text-[11.5px] text-ink-mute">
-                          <span className="inline-flex items-center gap-1.5">
-                            <UsersIcon className="h-3.5 w-3.5" />
-                            {members} {t.access.members}
-                          </span>
-                          <span>
-                            {role.capabilities.length}/{a.capabilities.length} {t.access.capsCol}
-                          </span>
-                        </div>
-                      </div>
-                    );
-                  })}
+                              {!role.system && (
+                                <button
+                                  onClick={() => setPendingDeleteRole(role)}
+                                  className="rounded-lg p-1.5 text-ink-mute transition hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-500/10"
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
+                <p className="mt-2 text-[11.5px] text-ink-mute">{t.access.overridesHint}</p>
               </section>
 
-              {/* ── comparison matrix ── */}
-              {a.resources.length > 0 && (
-                <section>
-                  <h2 className="heading mb-3 text-[15px] text-ink">{t.access.matrix}</h2>
-                  <div className="overflow-x-auto rounded-2xl border border-line bg-surface shadow-card">
-                    <table className="w-full min-w-[640px] border-collapse text-left">
-                      <thead>
-                        <tr className="border-b border-line bg-canvas/60">
-                          <th className="px-5 py-3 text-[11px] font-bold uppercase tracking-wider text-ink-mute">
-                            {t.schema.resources}
-                          </th>
-                          {a.appRoles.map((r) => (
-                            <th key={r.key} className="px-4 py-3 text-center text-[11.5px] font-semibold text-ink">
-                              {r.name}
-                            </th>
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {a.resources.map((res) => (
-                          <tr key={res.key} className="border-b border-line last:border-0">
-                            <td className="px-5 py-3">
-                              <span className="flex items-center gap-2 text-[12.5px] font-medium text-ink-soft">
-                                {res.name}
-                                {res.sensitive && (
-                                  <span className="inline-flex items-center gap-1 rounded-md bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700 dark:bg-amber-500/10 dark:text-amber-300">
-                                    <Lock className="h-2.5 w-2.5" />
-                                    {t.schema.sensitive}
-                                  </span>
-                                )}
-                              </span>
-                              <span className="font-mono text-[10.5px] text-ink-mute">{res.key}</span>
-                            </td>
-                            {a.appRoles.map((r) => {
-                              const lvl = effectiveLevel(r, res.key);
-                              const overridden = r.overrides[res.key] !== undefined;
-                              return (
-                                <td key={r.key} className="px-4 py-3 text-center">
-                                  <span
-                                    className={cn(
-                                      "relative inline-flex min-w-[58px] justify-center rounded-md px-2 py-1 text-[11.5px] font-semibold",
-                                      LEVEL_STYLE[lvl],
-                                    )}
-                                  >
-                                    {levelLabel(t, lvl)}
-                                    {overridden && (
-                                      <span className="absolute -right-1 -top-1 h-2 w-2 rounded-full bg-ink ring-2 ring-surface" />
-                                    )}
-                                  </span>
-                                </td>
-                              );
-                            })}
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </section>
-              )}
-
-              {/* ── grants ── */}
+              {/* ── grant access — search a person, pick a role ── */}
               <section>
                 <h2 className="heading mb-3 text-[15px] text-ink">{t.access.grants}</h2>
-                <div className="grid gap-4 lg:grid-cols-[1fr_320px]">
-                  {/* granted people */}
-                  <div className="overflow-hidden rounded-2xl border border-line bg-surface shadow-card">
+                <div className="rounded-2xl border border-line bg-surface p-4 shadow-card">
+                  <div className="flex flex-col gap-2 sm:flex-row">
+                    <select
+                      value={grantRoleKey}
+                      onChange={(e) => setGrantRoleKey(e.target.value)}
+                      className="input h-11 font-semibold sm:w-52"
+                    >
+                      {a.appRoles.map((r) => (
+                        <option key={r.key} value={r.key}>
+                          {r.name}
+                        </option>
+                      ))}
+                    </select>
+                    <div className="flex-1">
+                      {directoryEnabled ? (
+                        <PersonSearch onPick={(email) => grantPerson(email, grantRoleKey)} />
+                      ) : (
+                        <div className="flex gap-2">
+                          <input
+                            value={grantEmails}
+                            onChange={(e) => setGrantEmails(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter" && grantEmails.trim()) grantPerson(grantEmails, grantRoleKey);
+                            }}
+                            placeholder="name@company.co.th"
+                            className="input h-11 flex-1"
+                          />
+                          <button
+                            onClick={() => grantPerson(grantEmails, grantRoleKey)}
+                            disabled={!grantEmails.trim()}
+                            className="btn-primary btn-sm h-11 shrink-0"
+                          >
+                            <UserPlus className="h-4 w-4" />
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  <p className="mt-1.5 text-[11px] text-ink-mute">
+                    {directoryEnabled ? t.access.searchOrPick : t.access.grantHint}
+                  </p>
+
+                  {/* current grants — inline role change */}
+                  <div className="mt-4 border-t border-line">
                     {a.grants.length === 0 ? (
-                      <p className="px-5 py-10 text-center text-[12.5px] text-ink-mute">
+                      <p className="py-8 text-center text-[12.5px] text-ink-mute">
                         {a.sso.enforceAuthz ? t.access.noModel : t.access.everyone}
                       </p>
                     ) : (
                       a.grants.map((g, i) => {
-                        const role = a.appRoles.find((r) => r.key === g.roleKey);
                         const user = users.find((u) => u.email.toLowerCase() === g.email.toLowerCase());
                         return (
                           <div
-                            key={`${g.email}-${g.roleKey}-${i}`}
-                            className="flex items-center gap-3 border-b border-line px-4 py-3 last:border-0"
+                            key={`${g.email}-${i}`}
+                            className="flex items-center gap-3 border-b border-line py-2.5 last:border-0"
                           >
                             <Avatar name={user?.name ?? g.email} src={user?.avatarUrl} size={32} />
                             <div className="min-w-0 flex-1">
                               <p className="truncate text-[13px] font-medium text-ink">{user?.name ?? g.email}</p>
                               <p className="truncate text-[11.5px] text-ink-mute">{g.email}</p>
                             </div>
-                            <span className="rounded-md bg-rose-500/10 px-2 py-0.5 text-[11.5px] font-semibold text-rose-600 dark:text-rose-300">
-                              {role?.name ?? g.roleKey}
-                            </span>
+                            <select
+                              value={g.roleKey ?? ""}
+                              onChange={(e) => changeGrantRole(i, e.target.value)}
+                              className="h-8 rounded-lg border border-line bg-surface px-2 text-[12px] font-medium text-ink outline-none focus:border-rose-400"
+                            >
+                              {!g.roleKey && <option value="">{t.access.noAccessOpt}</option>}
+                              {a.appRoles.map((r) => (
+                                <option key={r.key} value={r.key}>
+                                  {r.name}
+                                </option>
+                              ))}
+                            </select>
                             <button
                               onClick={() => setGrants(a.grants.filter((_, idx) => idx !== i))}
                               className="rounded-lg p-1.5 text-ink-mute transition hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-500/10"
@@ -580,46 +683,6 @@ export default function AccessPage() {
                         );
                       })
                     )}
-                  </div>
-
-                  {/* grant form */}
-                  <div className="rounded-2xl border border-line bg-surface p-4 shadow-card">
-                    <p className="mb-3 flex items-center gap-2 text-[13px] font-semibold text-ink">
-                      <UserPlus className="h-4 w-4 text-ink-mute" />
-                      {t.access.grant}
-                    </p>
-                    {directoryEnabled && (
-                      <div className="mb-3">
-                        <PersonSearch onPick={addEmailToDraft} />
-                      </div>
-                    )}
-                    <textarea
-                      value={grantEmails}
-                      onChange={(e) => setGrantEmails(e.target.value)}
-                      placeholder={"name@company.co.th\nteam@company.co.th"}
-                      className="input h-20 resize-none py-2.5 font-mono text-[12px]"
-                    />
-                    <p className="mt-1.5 text-[11px] text-ink-mute">{t.access.grantHint}</p>
-                    <select
-                      value={grantRoleKey}
-                      onChange={(e) => setGrantRoleKey(e.target.value)}
-                      className="input mt-3"
-                    >
-                      <option value="">— {t.roles.title} —</option>
-                      {a.appRoles.map((r) => (
-                        <option key={r.key} value={r.key}>
-                          {r.name}
-                        </option>
-                      ))}
-                    </select>
-                    <button
-                      onClick={addGrants}
-                      disabled={!grantRoleKey || !grantEmails.trim()}
-                      className="btn-primary btn-sm mt-3 w-full"
-                    >
-                      <Plus className="h-4 w-4" />
-                      {t.access.grant}
-                    </button>
                   </div>
                 </div>
               </section>
