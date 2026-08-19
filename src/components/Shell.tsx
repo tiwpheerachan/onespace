@@ -216,9 +216,12 @@ export function Shell({ children }: { children: React.ReactNode }) {
       items: [
         { href: "/admin/insights", label: t.nav.insights, icon: BarChart3, show: can("audit.view") },
         { href: "/admin/apps", label: t.nav.apps, icon: Boxes, show: can("app.manage") },
-        { href: "/admin/access", label: t.nav.access, icon: KeyRound, show: can("app.manage") },
-        { href: "/admin/users", label: t.nav.users, icon: Users, show: can("user.manage") },
-        { href: "/admin/roles", label: t.nav.roles, icon: ShieldCheck, show: can("role.manage") },
+        {
+          href: "/admin/access",
+          label: t.nav.access,
+          icon: KeyRound,
+          show: can("app.manage") || can("user.manage") || can("role.manage"),
+        },
         { href: "/admin/audit", label: t.nav.audit, icon: ScrollText, show: can("audit.view") },
       ],
     },

@@ -3,6 +3,7 @@
 import { motion } from "framer-motion";
 import { Check, Lock, Pencil, Plus, ShieldCheck, Trash2 } from "lucide-react";
 import { useState } from "react";
+import { AccessTabs } from "@/components/AccessTabs";
 import { Confirm } from "@/components/Confirm";
 import { PageHeader } from "@/components/PageHeader";
 import { CheckPill, Field, Modal } from "@/components/ui";
@@ -44,6 +45,8 @@ export default function AdminRolesPage() {
           </button>
         }
       />
+
+      <AccessTabs />
 
       {/* ── role cards ─────────────────────────────────── */}
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">

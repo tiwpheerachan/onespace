@@ -3,6 +3,7 @@
 import { motion } from "framer-motion";
 import { Pencil, Search, Trash2, UserPlus, Users } from "lucide-react";
 import { useMemo, useState } from "react";
+import { AccessTabs } from "@/components/AccessTabs";
 import { Confirm } from "@/components/Confirm";
 import { PageHeader } from "@/components/PageHeader";
 import { Avatar, Badge, EmptyState, Field, Modal } from "@/components/ui";
@@ -53,6 +54,8 @@ export default function AdminUsersPage() {
           </button>
         }
       />
+
+      <AccessTabs />
 
       <div className="mb-5 flex flex-wrap items-center gap-3">
         <div className="relative max-w-sm flex-1">

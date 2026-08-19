@@ -16,6 +16,7 @@ import {
   X,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import { AccessTabs } from "@/components/AccessTabs";
 import { AppLogo } from "@/components/AppLogo";
 import { Confirm } from "@/components/Confirm";
 import { PageHeader } from "@/components/PageHeader";
@@ -276,6 +277,8 @@ export default function AccessPage() {
           </div>
         }
       />
+
+      <AccessTabs />
 
       {viewMode === "person" ? (
         !personEmail ? (
