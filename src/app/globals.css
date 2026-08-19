@@ -1,0 +1,127 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --font-sans: "Inter", "IBM Plex Sans Thai", "Noto Sans Thai", "Noto Sans SC",
+    ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-display: "Sora", "Inter", "IBM Plex Sans Thai", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", "Menlo", monospace;
+
+  --c-canvas: 247 249 252;
+  --c-surface: 255 255 255;
+  --c-elevated: 255 255 255;
+  --c-line: 226 232 240;
+  --c-ink: 15 23 42;
+  --c-ink-soft: 71 85 105;
+  --c-ink-mute: 148 163 184;
+}
+
+.dark {
+  --c-canvas: 8 12 22;
+  --c-surface: 15 21 34;
+  --c-elevated: 21 28 44;
+  --c-line: 39 49 71;
+  --c-ink: 237 242 250;
+  --c-ink-soft: 173 186 208;
+  --c-ink-mute: 116 132 158;
+}
+
+* { -webkit-tap-highlight-color: transparent; }
+
+html, body { height: 100%; }
+
+body {
+  background-color: rgb(var(--c-canvas));
+  color: rgb(var(--c-ink));
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+::selection { background: rgba(54, 99, 244, 0.18); }
+
+/* ── Scrollbar ─────────────────────────────────────────── */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: rgb(var(--c-line));
+  border-radius: 99px;
+  border: 3px solid rgb(var(--c-canvas));
+}
+::-webkit-scrollbar-thumb:hover { background: rgb(var(--c-ink-mute)); }
+
+@layer components {
+  .card {
+    @apply rounded-2xl border border-line bg-surface shadow-card;
+  }
+  .glass {
+    background: color-mix(in srgb, rgb(var(--c-surface)) 72%, transparent);
+    backdrop-filter: blur(18px) saturate(180%);
+    -webkit-backdrop-filter: blur(18px) saturate(180%);
+  }
+  .input {
+    @apply h-11 w-full rounded-xl border border-line bg-surface px-3.5 text-sm text-ink
+           placeholder:text-ink-mute outline-none transition
+           focus:border-brand-400 focus:ring-4 focus:ring-brand-500/10;
+  }
+  .label { @apply mb-1.5 block text-[12.5px] font-medium text-ink-soft; }
+  .btn {
+    @apply inline-flex select-none items-center justify-center gap-2 rounded-xl px-4 text-sm
+           font-semibold transition-all duration-200 disabled:cursor-not-allowed disabled:opacity-50;
+  }
+  .btn-primary {
+    @apply btn h-11 text-white shadow-glow;
+    background-image: linear-gradient(120deg, #1f43e6, #3663f4 45%, #0d9488);
+    background-size: 180% 100%;
+  }
+  .btn-primary:hover { background-position: 100% 0; transform: translateY(-1px); }
+  .btn-ghost {
+    @apply btn h-11 border border-line bg-surface text-ink-soft hover:border-brand-300 hover:text-ink;
+  }
+  .btn-sm { @apply h-9 rounded-lg px-3 text-[13px]; }
+  .chip {
+    @apply inline-flex items-center gap-1.5 rounded-full border border-line bg-surface px-3 py-1
+           text-[12px] font-medium text-ink-soft transition;
+  }
+  .chip-active {
+    @apply border-transparent bg-ink text-white shadow-sm dark:bg-brand-500;
+  }
+  .heading { @apply font-display font-semibold tracking-[-0.02em]; }
+  .hairline { @apply border-line; }
+}
+
+/* ── Aurora / mesh background ───────────────────────────── */
+.aurora { position: absolute; inset: -20%; filter: blur(80px); opacity: 0.75; pointer-events: none; }
+.aurora span { position: absolute; display: block; border-radius: 9999px; mix-blend-mode: multiply; }
+.dark .aurora span { mix-blend-mode: screen; opacity: 0.55; }
+
+.grid-lines {
+  background-image:
+    linear-gradient(to right, rgb(var(--c-line) / 0.55) 1px, transparent 1px),
+    linear-gradient(to bottom, rgb(var(--c-line) / 0.55) 1px, transparent 1px);
+  background-size: 64px 64px;
+  mask-image: radial-gradient(ellipse 80% 60% at 50% 0%, #000 20%, transparent 78%);
+  -webkit-mask-image: radial-gradient(ellipse 80% 60% at 50% 0%, #000 20%, transparent 78%);
+}
+
+.sheen { position: relative; overflow: hidden; }
+.sheen::after {
+  content: ""; position: absolute; inset: 0; transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,.45), transparent);
+}
+.sheen:hover::after { animation: shimmer 1.1s ease; }
+
+.tilt { transform-style: preserve-3d; will-change: transform; }
+
+/* ── ONE SPACE wordmark ─────────────────────────────────── */
+/* The asset is black glyphs on transparency; flip it to white in dark theme. */
+.dark .onespace-ink img { filter: brightness(0) invert(1); }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .001ms !important;
+  }
+}
