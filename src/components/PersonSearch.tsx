@@ -6,7 +6,7 @@ import { Avatar } from "@/components/ui";
 import { usePrefs } from "@/lib/i18n/provider";
 import { cn } from "@/lib/utils";
 
-interface Person {
+export interface DirectoryPerson {
   name?: string;
   en_name?: string;
   email?: string;
@@ -15,14 +15,26 @@ interface Person {
   avatar_url?: string;
   status?: string;
 }
+type Person = DirectoryPerson;
 
 /**
  * Type-a-name → pick-a-person autocomplete, backed by the central directory
- * (Step G). Picking someone hands their email up via onPick — the caller
- * decides what to do with it. Searches run against our own /api proxy, so the
- * API key never reaches the browser.
+ * (Step G). Picking someone hands their email up via onPick — and the whole
+ * directory record via onPickPerson, so a caller can prefill name / avatar /
+ * department too. Searches run against our own /api proxy, so the API key never
+ * reaches the browser.
  */
-export function PersonSearch({ onPick }: { onPick: (email: string) => void }) {
+export function PersonSearch({
+  onPick,
+  onPickPerson,
+  autoFocus,
+  placeholder,
+}: {
+  onPick?: (email: string) => void;
+  onPickPerson?: (p: DirectoryPerson) => void;
+  autoFocus?: boolean;
+  placeholder?: string;
+}) {
   const { t } = usePrefs();
   const [q, setQ] = useState("");
   const [items, setItems] = useState<Person[]>([]);
@@ -68,7 +80,8 @@ export function PersonSearch({ onPick }: { onPick: (email: string) => void }) {
   }, []);
 
   const pick = (p: Person) => {
-    if (p.email) onPick(p.email);
+    if (p.email) onPick?.(p.email);
+    onPickPerson?.(p);
     setQ("");
     setItems([]);
     setOpen(false);
@@ -79,9 +92,11 @@ export function PersonSearch({ onPick }: { onPick: (email: string) => void }) {
       <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-mute" />
       <input
         value={q}
+        // eslint-disable-next-line jsx-a11y/no-autofocus
+        autoFocus={autoFocus}
         onChange={(e) => setQ(e.target.value)}
         onFocus={() => items.length && setOpen(true)}
-        placeholder={t.access.searchPeople}
+        placeholder={placeholder ?? t.access.searchPeople}
         className="input pl-10 pr-9"
       />
       {loading && <Loader2 className="absolute right-3.5 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-ink-mute" />}

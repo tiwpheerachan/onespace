@@ -1,11 +1,12 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { Pencil, Search, Trash2, UserPlus, Users } from "lucide-react";
+import { BadgeCheck, Pencil, Search, Trash2, UserPlus, Users } from "lucide-react";
 import { useMemo, useState } from "react";
 import { AccessTabs } from "@/components/AccessTabs";
 import { Confirm } from "@/components/Confirm";
 import { PageHeader } from "@/components/PageHeader";
+import { type DirectoryPerson, PersonSearch } from "@/components/PersonSearch";
 import { Avatar, Badge, EmptyState, Field, Modal } from "@/components/ui";
 import { usePortal } from "@/lib/data/store";
 import { usePrefs } from "@/lib/i18n/provider";
@@ -19,6 +20,7 @@ export default function AdminUsersPage() {
   const { users, roles, saveUser, deleteUser } = usePortal();
   const [query, setQuery] = useState("");
   const [draft, setDraft] = useState<PortalUser | null>(null);
+  const [isNew, setIsNew] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<PortalUser | null>(null);
 
   const filtered = useMemo(() => {
@@ -30,7 +32,8 @@ export default function AdminUsersPage() {
 
   const patch = (p: Partial<PortalUser>) => setDraft((d) => (d ? { ...d, ...p } : d));
 
-  const openNew = () =>
+  const openNew = () => {
+    setIsNew(true);
     setDraft({
       id: uid("u"),
       name: "",
@@ -41,6 +44,37 @@ export default function AdminUsersPage() {
       status: "invited",
       lastLogin: null,
     });
+  };
+
+  const openEdit = (u: PortalUser) => {
+    setIsNew(false);
+    setDraft({ ...u });
+  };
+
+  const closeDraft = () => {
+    setDraft(null);
+    setIsNew(false);
+  };
+
+  /** Prefill the draft straight from a directory record. Directory names often
+   *  carry a "(Job Title)" tail — drop it, the department field holds that. */
+  const applyPerson = (p: DirectoryPerson) => {
+    const clean = (p.name || p.en_name || "").replace(/\s*\(.*\)\s*$/, "").trim();
+    patch({
+      name: clean || p.name || p.en_name || "",
+      email: p.email || "",
+      avatarUrl: p.avatar_url || null,
+      department: p.job_title || p.departments?.[0] || "",
+    });
+  };
+
+  // Is the email in the draft already a portal user? (guards against dupes)
+  const dupUser =
+    draft && draft.email.trim()
+      ? users.find(
+          (u) => u.id !== draft.id && u.email.toLowerCase() === draft.email.trim().toLowerCase(),
+        )
+      : undefined;
 
   return (
     <>
@@ -121,7 +155,7 @@ export default function AdminUsersPage() {
 
                 <div className="flex items-center justify-end gap-1">
                   <button
-                    onClick={() => setDraft({ ...u })}
+                    onClick={() => openEdit(u)}
                     className="rounded-lg p-2 text-ink-mute transition hover:bg-canvas hover:text-ink"
                   >
                     <Pencil className="h-4 w-4" />
@@ -141,30 +175,45 @@ export default function AdminUsersPage() {
 
       <Modal
         open={Boolean(draft)}
-        onClose={() => setDraft(null)}
-        title={t.users.edit}
+        onClose={closeDraft}
+        title={isNew ? t.users.new : t.users.edit}
         subtitle={draft?.email || undefined}
         width="max-w-xl"
         footer={
           <>
-            <button onClick={() => setDraft(null)} className="btn-ghost btn-sm">
+            <button onClick={closeDraft} className="btn-ghost btn-sm">
               {t.common.cancel}
             </button>
             <button
               onClick={async () => {
-                if (!draft?.name.trim() || !draft.email.trim()) return;
+                if (!draft?.name.trim() || !draft.email.trim() || dupUser) return;
                 await saveUser(draft);
-                setDraft(null);
+                closeDraft();
               }}
-              className="btn-primary btn-sm"
+              disabled={!draft?.name.trim() || !draft?.email.trim() || Boolean(dupUser)}
+              className="btn-primary btn-sm disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {t.common.saveChanges}
+              {isNew ? t.users.new : t.common.saveChanges}
             </button>
           </>
         }
       >
         {draft && (
           <div className="space-y-4">
+            {/* Directory search — lead the invite flow, prefill from Lark */}
+            {isNew && (
+              <div className="rounded-2xl border border-brand-200 bg-brand-50/50 p-4 dark:border-brand-500/25 dark:bg-brand-500/5">
+                <p className="flex items-center gap-1.5 text-[12.5px] font-semibold text-ink">
+                  <Search className="h-3.5 w-3.5 text-brand-500" />
+                  {t.users.findPerson}
+                </p>
+                <div className="mt-2.5">
+                  <PersonSearch onPickPerson={applyPerson} placeholder={t.users.searchPlaceholder} />
+                </div>
+                <p className="mt-2 text-[11.5px] leading-relaxed text-ink-mute">{t.users.findPersonHint}</p>
+              </div>
+            )}
+
             <div className="flex items-center gap-4 rounded-2xl border border-line bg-canvas/60 p-4">
               <Avatar
                 name={draft.name || "?"}
@@ -173,10 +222,33 @@ export default function AdminUsersPage() {
                 color={roles.find((r) => r.key === draft.roleKey)?.color}
               />
               <div className="min-w-0 flex-1">
-                <p className="truncate text-[14px] font-semibold text-ink">{draft.name || "—"}</p>
+                <p className="flex items-center gap-1.5 truncate text-[14px] font-semibold text-ink">
+                  {draft.name || "—"}
+                  {isNew && draft.avatarUrl && (
+                    <BadgeCheck className="h-4 w-4 shrink-0 text-brand-500" />
+                  )}
+                </p>
                 <p className="truncate text-[12px] text-ink-mute">{draft.email || "—"}</p>
               </div>
+              {isNew && draft.avatarUrl && (
+                <span className="shrink-0 rounded-full bg-brand-100 px-2.5 py-1 text-[10.5px] font-semibold text-brand-700 dark:bg-brand-500/15 dark:text-brand-300">
+                  {t.users.fromDirectory}
+                </span>
+              )}
             </div>
+
+            {dupUser && (
+              <p className="flex items-center gap-1.5 rounded-xl bg-amber-50 px-3.5 py-2.5 text-[12px] font-medium text-amber-700 dark:bg-amber-500/10 dark:text-amber-400">
+                <BadgeCheck className="h-4 w-4 shrink-0" />
+                {t.users.alreadyAdded}: {dupUser.name}
+              </p>
+            )}
+
+            {isNew && (
+              <p className="text-center text-[11px] font-medium uppercase tracking-wide text-ink-mute">
+                {t.users.orManual}
+              </p>
+            )}
 
             <div className="grid gap-4 sm:grid-cols-2">
               <Field label={t.common.name}>
