@@ -40,11 +40,15 @@ export async function GET(req: NextRequest) {
       body: JSON.stringify({ code, client_id: cfg.clientId, client_secret: cfg.clientSecret }),
     });
     if (!r.ok) {
-      // 403 = no access (enforcement on + no role) · 401 = bad credentials
-      return fail(r.status === 403 ? "noaccess" : "verify");
+      const detail = await r.text().catch(() => "");
+      // shows up in Render logs — 401 = bad client_secret, 400 = code expired/used
+      console.error("[sso] verify failed", r.status, detail.slice(0, 300));
+      // 403 = no access (enforcement on + no role in app)
+      return fail(r.status === 403 ? "noaccess" : `verify_${r.status}`);
     }
     me = await r.json();
-  } catch {
+  } catch (e) {
+    console.error("[sso] verify error", e);
     return fail("verify");
   }
 
