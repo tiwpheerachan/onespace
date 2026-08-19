@@ -33,3 +33,8 @@ services:
         sync: false
       - key: SSO_CLIENT_SECRET
         sync: false
+      # ── Directory search (optional) — people picker when granting access ──
+      - key: NEXT_PUBLIC_DIRECTORY_ENABLED
+        value: "1"
+      - key: CENTRAL_API_KEY
+        sync: false

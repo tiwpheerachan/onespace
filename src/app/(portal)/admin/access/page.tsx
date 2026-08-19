@@ -19,6 +19,7 @@ import { useEffect, useMemo, useState } from "react";
 import { AppLogo } from "@/components/AppLogo";
 import { Confirm } from "@/components/Confirm";
 import { PageHeader } from "@/components/PageHeader";
+import { PersonSearch } from "@/components/PersonSearch";
 import { Avatar, EmptyState, Field, Modal } from "@/components/ui";
 import {
   effectiveLevel,
@@ -36,6 +37,8 @@ import {
   type ResourceLevel,
 } from "@/lib/types";
 import { cn, uid } from "@/lib/utils";
+
+const directoryEnabled = process.env.NEXT_PUBLIC_DIRECTORY_ENABLED === "1";
 
 const LEVEL_STYLE: Record<ResourceLevel, string> = {
   none: "bg-canvas text-ink-mute",
@@ -84,7 +87,9 @@ export default function AccessPage() {
   const { t } = usePrefs();
   const { apps, users, saveApp, can } = usePortal();
 
+  const [viewMode, setViewMode] = useState<"app" | "person">("app");
   const [appId, setAppId] = useState<string | null>(null);
+  const [personEmail, setPersonEmail] = useState<string | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [draftRole, setDraftRole] = useState<AppRole | null>(null);
   const [pendingDeleteRole, setPendingDeleteRole] = useState<AppRole | null>(null);
@@ -97,6 +102,11 @@ export default function AccessPage() {
     const withModel = apps.find((a) => (a.appRoles?.length ?? 0) > 0);
     setAppId((withModel ?? apps[0]).id);
   }, [apps, appId]);
+
+  useEffect(() => {
+    if (personEmail || !users.length) return;
+    setPersonEmail(users[0].email.toLowerCase());
+  }, [users, personEmail]);
 
   useEffect(() => {
     const close = () => setPickerOpen(false);
@@ -126,6 +136,14 @@ export default function AccessPage() {
   const patchRole = (key: string, p: Partial<AppRole>) =>
     a && setRoles(a.appRoles.map((r) => (r.key === key ? { ...r, ...p } : r)));
 
+  // person view: set one person's role in a given app (one role per app here) —
+  // writes straight to that app's grants, the same store the by-app view uses.
+  const setPersonRole = (targetApp: PortalApp, email: string, roleKey: string) => {
+    const grants = (targetApp.grants ?? []).filter((g) => g.email.toLowerCase() !== email);
+    saveApp({ ...targetApp, grants: roleKey ? [...grants, { email, roleKey }] : grants });
+  };
+  const selectedUser = users.find((u) => u.email.toLowerCase() === personEmail);
+
   const addGrants = () => {
     if (!a || !grantRoleKey) return;
     const emails = grantEmails
@@ -141,6 +159,16 @@ export default function AccessPage() {
     setGrantEmails("");
   };
 
+  // a person picked from the central directory just drops their email into the box
+  const addEmailToDraft = (email: string) => {
+    const e = email.trim().toLowerCase();
+    if (!e) return;
+    setGrantEmails((prev) => {
+      const list = prev.split(/[\n,;]+/).map((s) => s.trim().toLowerCase()).filter(Boolean);
+      return list.includes(e) ? prev : [...list, e].join("\n");
+    });
+  };
+
   const saveDraftRole = () => {
     if (!a || !draftRole || !draftRole.name.trim()) return;
     const exists = a.appRoles.some((r) => r.key === draftRole.key);
@@ -154,54 +182,189 @@ export default function AccessPage() {
         title={t.access.title}
         subtitle={t.access.subtitle}
         action={
-          /* ── app picker ── */
-          <div className="relative" onClick={(e) => e.stopPropagation()}>
-            <button
-              onClick={() => setPickerOpen((v) => !v)}
-              className="flex h-10 items-center gap-2.5 rounded-xl border border-line bg-surface px-3 text-[13px] font-semibold text-ink transition hover:border-rose-300"
-            >
-              {app ? <AppLogo app={app} size={22} radius={7} /> : <Layers className="h-4 w-4 text-ink-mute" />}
-              <span className="max-w-[200px] truncate">{app?.name ?? t.access.pickApp}</span>
-              <ChevronDown className="h-4 w-4 text-ink-mute" />
-            </button>
-            <AnimatePresence>
-              {pickerOpen && (
-                <motion.div
-                  initial={{ opacity: 0, y: -6, scale: 0.98 }}
-                  animate={{ opacity: 1, y: 0, scale: 1 }}
-                  exit={{ opacity: 0, y: -6, scale: 0.98 }}
-                  transition={{ duration: 0.15 }}
-                  className="absolute right-0 z-40 mt-2 max-h-[360px] w-64 overflow-y-auto rounded-xl border border-line bg-surface p-1.5 shadow-lift"
+          <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+            {/* ── view mode: by app / by person ── */}
+            <div className="flex rounded-xl border border-line bg-canvas/60 p-1">
+              {(["app", "person"] as const).map((m) => (
+                <button
+                  key={m}
+                  onClick={() => {
+                    setViewMode(m);
+                    setPickerOpen(false);
+                  }}
+                  className={cn(
+                    "rounded-lg px-3 py-1.5 text-[12.5px] font-semibold transition",
+                    viewMode === m ? "bg-surface text-ink shadow-sm" : "text-ink-mute hover:text-ink-soft",
+                  )}
                 >
-                  {apps.map((ap) => (
-                    <button
-                      key={ap.id}
-                      onClick={() => {
-                        setAppId(ap.id);
-                        setPickerOpen(false);
-                      }}
-                      className={cn(
-                        "flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left transition hover:bg-canvas",
-                        ap.id === appId && "bg-canvas",
-                      )}
-                    >
-                      <AppLogo app={ap} size={22} radius={7} />
-                      <span className="min-w-0 flex-1 truncate text-[13px] text-ink">{ap.name}</span>
-                      {(ap.appRoles?.length ?? 0) > 0 && (
-                        <span className="font-mono text-[10.5px] tabular-nums text-ink-mute">
-                          {ap.appRoles?.length}
-                        </span>
-                      )}
-                    </button>
-                  ))}
-                </motion.div>
-              )}
-            </AnimatePresence>
+                  {m === "app" ? t.access.byApp : t.access.byPerson}
+                </button>
+              ))}
+            </div>
+
+            {/* ── picker (app or person) ── */}
+            <div className="relative">
+              <button
+                onClick={() => setPickerOpen((v) => !v)}
+                className="flex h-10 items-center gap-2.5 rounded-xl border border-line bg-surface px-3 text-[13px] font-semibold text-ink transition hover:border-rose-300"
+              >
+                {viewMode === "app" ? (
+                  app ? <AppLogo app={app} size={22} radius={7} /> : <Layers className="h-4 w-4 text-ink-mute" />
+                ) : selectedUser ? (
+                  <Avatar name={selectedUser.name} src={selectedUser.avatarUrl} size={22} />
+                ) : (
+                  <UsersIcon className="h-4 w-4 text-ink-mute" />
+                )}
+                <span className="max-w-[180px] truncate">
+                  {viewMode === "app"
+                    ? app?.name ?? t.access.pickApp
+                    : selectedUser?.name ?? t.access.pickPerson}
+                </span>
+                <ChevronDown className="h-4 w-4 text-ink-mute" />
+              </button>
+              <AnimatePresence>
+                {pickerOpen && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -6, scale: 0.98 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: -6, scale: 0.98 }}
+                    transition={{ duration: 0.15 }}
+                    className="absolute right-0 z-40 mt-2 max-h-[360px] w-64 overflow-y-auto rounded-xl border border-line bg-surface p-1.5 shadow-lift"
+                  >
+                    {viewMode === "app"
+                      ? apps.map((ap) => (
+                          <button
+                            key={ap.id}
+                            onClick={() => {
+                              setAppId(ap.id);
+                              setPickerOpen(false);
+                            }}
+                            className={cn(
+                              "flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left transition hover:bg-canvas",
+                              ap.id === appId && "bg-canvas",
+                            )}
+                          >
+                            <AppLogo app={ap} size={22} radius={7} />
+                            <span className="min-w-0 flex-1 truncate text-[13px] text-ink">{ap.name}</span>
+                            {(ap.appRoles?.length ?? 0) > 0 && (
+                              <span className="font-mono text-[10.5px] tabular-nums text-ink-mute">
+                                {ap.appRoles?.length}
+                              </span>
+                            )}
+                          </button>
+                        ))
+                      : users.map((u) => (
+                          <button
+                            key={u.id}
+                            onClick={() => {
+                              setPersonEmail(u.email.toLowerCase());
+                              setPickerOpen(false);
+                            }}
+                            className={cn(
+                              "flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left transition hover:bg-canvas",
+                              u.email.toLowerCase() === personEmail && "bg-canvas",
+                            )}
+                          >
+                            <Avatar name={u.name} src={u.avatarUrl} size={22} />
+                            <span className="min-w-0 flex-1 truncate text-[13px] text-ink">{u.name}</span>
+                          </button>
+                        ))}
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
           </div>
         }
       />
 
-      {!app || !a ? (
+      {viewMode === "person" ? (
+        !personEmail ? (
+          <EmptyState icon={<UsersIcon className="h-6 w-6" />} title={t.access.pickPerson} />
+        ) : (
+          <div className="space-y-3">
+            {/* ── person header ── */}
+            <div className="flex items-center gap-3 rounded-2xl border border-line bg-surface p-4 shadow-card">
+              <Avatar name={selectedUser?.name ?? personEmail} src={selectedUser?.avatarUrl} size={44} />
+              <div className="min-w-0">
+                <p className="text-[14px] font-semibold text-ink">{selectedUser?.name ?? personEmail}</p>
+                <p className="font-mono text-[11.5px] text-ink-mute">
+                  {personEmail} ·{" "}
+                  {apps.filter((ap) => (ap.grants ?? []).some((g) => g.email.toLowerCase() === personEmail)).length}{" "}
+                  {t.access.appsGranted}
+                </p>
+              </div>
+            </div>
+
+            {/* ── access app-by-app for this person ── */}
+            {apps.map((ap) => {
+              const aa = withAuthz(ap);
+              const roleKey = aa.grants.find((g) => g.email.toLowerCase() === personEmail)?.roleKey ?? "";
+              const role = aa.appRoles.find((r) => r.key === roleKey);
+              return (
+                <div key={ap.id} className="rounded-2xl border border-line bg-surface p-4 shadow-card">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div className="flex items-center gap-3">
+                      <AppLogo app={ap} size={36} radius={11} />
+                      <div>
+                        <p className="text-[13.5px] font-semibold text-ink">{ap.name}</p>
+                        <p className="font-mono text-[11px] text-ink-mute">
+                          {aa.resources.length} resources · {aa.capabilities.length} capabilities
+                        </p>
+                      </div>
+                    </div>
+                    {aa.appRoles.length > 0 ? (
+                      <select
+                        value={roleKey}
+                        onChange={(e) => setPersonRole(ap, personEmail, e.target.value)}
+                        className={cn("input h-9 w-52", roleKey && "border-rose-400 font-semibold text-ink")}
+                      >
+                        <option value="">{t.access.noAccessOpt}</option>
+                        {aa.appRoles.map((r) => (
+                          <option key={r.key} value={r.key}>
+                            {r.name}
+                            {r.baseLevel === "manage" ? ` · ${t.access.lvManage}` : ""}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <span className="inline-flex items-center gap-1.5 rounded-lg bg-canvas px-3 py-1.5 text-[12px] font-semibold text-ink-mute">
+                        {aa.sso.enforceAuthz ? t.access.noModelShort : t.access.openToAll}
+                      </span>
+                    )}
+                  </div>
+
+                  {/* effective page / resource access for this person in this app */}
+                  {role && aa.resources.length > 0 && (
+                    <div className="mt-3 border-t border-line pt-3">
+                      <p className="mb-2 text-[10.5px] uppercase tracking-wide text-ink-mute">
+                        {t.access.pageAccess}
+                      </p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {aa.resources.map((res) => {
+                          const lvl = effectiveLevel(role, res.key);
+                          return (
+                            <span
+                              key={res.key}
+                              className={cn(
+                                "inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-[11.5px] font-medium",
+                                LEVEL_STYLE[lvl],
+                              )}
+                            >
+                              {res.sensitive && <Lock className="h-3 w-3" />}
+                              {res.name}
+                              <span className="opacity-70">· {levelLabel(t, lvl)}</span>
+                            </span>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )
+      ) : !app || !a ? (
         <EmptyState icon={<Layers className="h-6 w-6" />} title={t.access.noApp} />
       ) : (
         <div className="space-y-6">
@@ -422,6 +585,11 @@ export default function AccessPage() {
                       <UserPlus className="h-4 w-4 text-ink-mute" />
                       {t.access.grant}
                     </p>
+                    {directoryEnabled && (
+                      <div className="mb-3">
+                        <PersonSearch onPick={addEmailToDraft} />
+                      </div>
+                    )}
                     <textarea
                       value={grantEmails}
                       onChange={(e) => setGrantEmails(e.target.value)}
