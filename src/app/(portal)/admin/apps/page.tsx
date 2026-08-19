@@ -1,17 +1,18 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { Boxes, ExternalLink, ImagePlus, KeyRound, Layers, Pencil, Plus, Search, Settings2, ShieldCheck, Trash2, Upload } from "lucide-react";
+import { Boxes, ExternalLink, ImagePlus, KeyRound, Layers, Pencil, Plus, Search, Settings2, ShieldCheck, Trash2, Upload, UserRound, X } from "lucide-react";
 import { useMemo, useRef, useState } from "react";
 import { AppLogo } from "@/components/AppLogo";
 import { SchemaTab, SsoTab } from "@/components/AppAuthzTabs";
 import { Confirm } from "@/components/Confirm";
 import { PageHeader } from "@/components/PageHeader";
-import { Badge, CheckPill, EmptyState, Field, Modal } from "@/components/ui";
+import { type DirectoryPerson, PersonSearch } from "@/components/PersonSearch";
+import { Avatar, Badge, CheckPill, EmptyState, Field, Modal } from "@/components/ui";
 import { usePortal } from "@/lib/data/store";
 import { usePrefs } from "@/lib/i18n/provider";
-import { APP_CATEGORIES, type AppCategory, type AppStatus, type PortalApp } from "@/lib/types";
-import { cn, initials, normalise, uid } from "@/lib/utils";
+import { APP_CATEGORIES, type AppCategory, type AppMaintainer, type AppStatus, type PortalApp } from "@/lib/types";
+import { cn, hexToRgba, initials, normalise, uid } from "@/lib/utils";
 
 type EditorTab = "general" | "sso" | "schema";
 
@@ -70,6 +71,20 @@ export default function AdminAppsPage() {
   };
 
   const patch = (p: Partial<PortalApp>) => setDraft((d) => (d ? { ...d, ...p } : d));
+
+  const setMaintainer = (m: AppMaintainer | null) => patch({ maintainer: m });
+  const patchMaintainer = (p: Partial<AppMaintainer>) =>
+    setDraft((d) =>
+      d ? { ...d, maintainer: { name: "", email: "", ...(d.maintainer ?? {}), ...p } } : d,
+    );
+  /** Pick a maintainer straight from the central directory. */
+  const applyMaintainer = (p: DirectoryPerson) =>
+    setMaintainer({
+      name: (p.name || p.en_name || "").replace(/\s*\(.*\)\s*$/, "").trim() || p.name || "",
+      email: p.email || "",
+      avatarUrl: p.avatar_url || null,
+      title: p.job_title || p.departments?.[0] || "",
+    });
 
   const onFile = (file?: File) => {
     if (!file) return;
@@ -261,11 +276,21 @@ export default function AdminAppsPage() {
                 </Field>
               </div>
 
-              <Field label={t.common.description}>
+              <Field label={t.common.description} hint={t.apps.descHint}>
                 <textarea
-                  className="input h-20 resize-none py-2.5"
+                  className="input h-16 resize-none py-2.5"
                   value={draft.description}
                   onChange={(e) => patch({ description: e.target.value })}
+                  placeholder={t.apps.descPlaceholder}
+                />
+              </Field>
+
+              <Field label={t.apps.longDescription} hint={t.apps.longDescHint}>
+                <textarea
+                  className="input h-28 resize-y py-2.5 leading-relaxed"
+                  value={draft.longDescription ?? ""}
+                  onChange={(e) => patch({ longDescription: e.target.value })}
+                  placeholder={t.apps.longDescPlaceholder}
                 />
               </Field>
 
@@ -322,6 +347,64 @@ export default function AdminAppsPage() {
                 />
               </Field>
 
+              {/* ── maintainer / contact ─────────────────── */}
+              <div>
+                <p className="label flex items-center gap-1.5">
+                  <UserRound className="h-3.5 w-3.5 text-ink-mute" />
+                  {t.apps.maintainer}
+                </p>
+                {draft.maintainer ? (
+                  <div className="rounded-xl border border-line bg-canvas/50 p-3">
+                    <div className="flex items-center gap-3">
+                      <Avatar
+                        name={draft.maintainer.name || "?"}
+                        src={draft.maintainer.avatarUrl}
+                        size={40}
+                        color={draft.color}
+                      />
+                      <input
+                        className="input h-9 flex-1 text-[13px] font-semibold"
+                        value={draft.maintainer.name}
+                        onChange={(e) => patchMaintainer({ name: e.target.value })}
+                        placeholder={t.common.name}
+                      />
+                      <button
+                        onClick={() => setMaintainer(null)}
+                        className="rounded-lg p-1.5 text-ink-mute transition hover:bg-surface hover:text-rose-600"
+                        title={t.apps.remove}
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    </div>
+                    <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                      <input
+                        className="input h-9 text-[12.5px]"
+                        value={draft.maintainer.title ?? ""}
+                        onChange={(e) => patchMaintainer({ title: e.target.value })}
+                        placeholder={t.apps.maintainerTitlePlaceholder}
+                      />
+                      <input
+                        className="input h-9 text-[12.5px]"
+                        value={draft.maintainer.email}
+                        onChange={(e) => patchMaintainer({ email: e.target.value })}
+                        placeholder="email@company.com"
+                      />
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <PersonSearch onPickPerson={applyMaintainer} placeholder={t.apps.maintainerSearch} />
+                    <button
+                      onClick={() => setMaintainer({ name: "", email: "" })}
+                      className="mt-2 text-[11.5px] font-semibold text-ink-mute transition hover:text-ink"
+                    >
+                      + {t.apps.maintainerManual}
+                    </button>
+                  </>
+                )}
+                <p className="mt-2 text-[11.5px] leading-relaxed text-ink-mute">{t.apps.maintainerHint}</p>
+              </div>
+
               <div>
                 <p className="label">{t.apps.allowedRoles}</p>
                 <div className="grid gap-2 sm:grid-cols-2">
@@ -349,30 +432,75 @@ export default function AdminAppsPage() {
             {/* ── live preview ────────────────────────── */}
             <div className="space-y-4">
               <p className="label">{t.apps.preview}</p>
-              <motion.div
-                layout
-                className="rounded-2xl border border-line bg-canvas/60 p-4"
-              >
-                <div className="rounded-2xl border border-line bg-surface p-4 shadow-card">
-                  <AppLogo
-                    app={{
-                      name: draft.name || "New App",
-                      shortName: draft.shortName || initials(draft.name || "New App"),
-                      logoUrl: draft.logoUrl,
-                      color: draft.color,
-                    }}
-                    size={48}
-                  />
-                  <p className="heading mt-3 text-[14px] text-ink">{draft.name || "—"}</p>
-                  <p className="mt-1 line-clamp-2 text-[12px] text-ink-soft">
-                    {draft.description || "—"}
-                  </p>
-                  <div className="mt-3 flex items-center justify-between border-t border-line pt-3">
-                    <span className="text-[11px] text-ink-mute">{t.cat[draft.category]}</span>
+              <motion.div layout className="overflow-hidden rounded-2xl border border-line bg-surface shadow-card">
+                {/* cover */}
+                <div className="relative h-28 w-full overflow-hidden">
+                  {draft.coverUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={draft.coverUrl} alt="" className="absolute inset-0 h-full w-full object-cover" />
+                  ) : (
+                    <span
+                      className="absolute inset-0"
+                      style={{
+                        background: `linear-gradient(135deg, ${draft.color}, ${hexToRgba(draft.color, 0.72)} 52%, ${hexToRgba(draft.color, 0.42)})`,
+                      }}
+                    >
+                      <span className="pointer-events-none absolute -right-2 -top-5 select-none font-display text-[86px] font-bold leading-none text-white/15">
+                        {(draft.shortName || initials(draft.name || "New App")).slice(0, 2)}
+                      </span>
+                    </span>
+                  )}
+                  <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/55 via-black/10 to-transparent" />
+                  <div className="absolute right-3 top-3">
                     <Badge tone={draft.status}>{t.status[draft.status]}</Badge>
                   </div>
+                  <div className="absolute inset-x-0 bottom-0 flex items-center gap-2.5 p-3">
+                    <AppLogo
+                      app={{
+                        name: draft.name || "New App",
+                        shortName: draft.shortName || initials(draft.name || "New App"),
+                        logoUrl: draft.logoUrl,
+                        color: draft.color,
+                      }}
+                      size={34}
+                      radius={10}
+                      className="ring-2 ring-white/25"
+                    />
+                    <div className="min-w-0">
+                      <p className="truncate font-display text-[13.5px] font-semibold text-white">
+                        {draft.name || "—"}
+                      </p>
+                      <p className="truncate text-[10.5px] text-white/80">{t.cat[draft.category]}</p>
+                    </div>
+                  </div>
+                </div>
+                {/* body */}
+                <div className="p-3.5">
+                  <p className="line-clamp-2 min-h-[32px] text-[12px] leading-relaxed text-ink-soft">
+                    {draft.description || "—"}
+                  </p>
+                  {draft.maintainer?.name && (
+                    <div className="mt-2.5 flex items-center gap-2">
+                      <Avatar name={draft.maintainer.name} src={draft.maintainer.avatarUrl} size={20} color={draft.color} />
+                      <span className="truncate text-[11px] text-ink-mute">
+                        {t.apps.maintainedBy}{" "}
+                        <span className="font-semibold text-ink-soft">{draft.maintainer.name}</span>
+                      </span>
+                    </div>
+                  )}
                 </div>
               </motion.div>
+
+              <div>
+                <p className="label">{t.apps.coverImage}</p>
+                <input
+                  className="input"
+                  placeholder="https://…/cover.jpg"
+                  value={draft.coverUrl ?? ""}
+                  onChange={(e) => patch({ coverUrl: e.target.value || null })}
+                />
+                <p className="mt-2 text-[11.5px] leading-relaxed text-ink-mute">{t.apps.coverHint}</p>
+              </div>
 
               <div>
                 <p className="label">{t.common.logo}</p>

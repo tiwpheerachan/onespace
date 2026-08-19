@@ -53,12 +53,27 @@ export interface PortalApp {
   version: string;
   sortOrder: number;
   createdAt: string;
+  /** Optional banner image for the app card; falls back to a colour cover. */
+  coverUrl?: string | null;
+  /** A richer, multi-paragraph write-up shown in the detail sheet. */
+  longDescription?: string;
+  /** Who to contact about this app — shown with a profile on the card + detail. */
+  maintainer?: AppMaintainer | null;
   /** Central-identity authorization model (SSO + per-app roles/resources). */
   sso?: AppSso;
   resources?: AppResource[];
   capabilities?: AppCapability[];
   appRoles?: AppRole[];
   grants?: AppGrant[];
+}
+
+/** The person who owns / supports an app — "กรุณาติดต่อ …". */
+export interface AppMaintainer {
+  name: string;
+  email: string;
+  avatarUrl?: string | null;
+  /** Job title or role, e.g. "ผู้ดูแลระบบ", "IT Support". */
+  title?: string;
 }
 
 /* ── App authorization model (central-identity style) ──────────────────── */

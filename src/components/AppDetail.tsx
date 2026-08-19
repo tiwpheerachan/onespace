@@ -7,14 +7,16 @@ import {
   GitBranch,
   Globe,
   Lock,
+  Mail,
   ShieldCheck,
   Tag,
 } from "lucide-react";
 import { AppLogo } from "@/components/AppLogo";
-import { Badge, Modal } from "@/components/ui";
+import { ProgressiveBlur } from "@/components/ui/progressive-blur-card";
+import { Avatar, Badge, Modal } from "@/components/ui";
 import { usePrefs } from "@/lib/i18n/provider";
 import type { PortalApp, Role } from "@/lib/types";
-import { cn, formatDateTime, hexToRgba } from "@/lib/utils";
+import { cn, formatDateTime, hexToRgba, initials } from "@/lib/utils";
 
 function hostOf(url: string) {
   try {
@@ -97,24 +99,85 @@ export function AppDetail({
     >
       {app && (
         <div className="space-y-5">
-          {/* banner */}
-          <div
-            className="relative flex items-center gap-4 overflow-hidden rounded-2xl border border-line p-4"
-            style={{
-              background: `linear-gradient(120deg, ${hexToRgba(app.color, 0.14)}, transparent 70%)`,
-            }}
-          >
-            <AppLogo app={app} size={60} radius={16} />
-            <div className="min-w-0">
-              <div className="flex items-center gap-2">
-                <h3 className="heading truncate text-[17px] text-ink">{app.name}</h3>
-                <Badge tone={app.status}>{t.status[app.status]}</Badge>
+          {/* cover banner with progressive blur */}
+          <div className="relative h-40 overflow-hidden rounded-2xl border border-line">
+            {app.coverUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={app.coverUrl} alt="" className="absolute inset-0 h-full w-full object-cover" />
+            ) : (
+              <span
+                className="absolute inset-0"
+                style={{
+                  background: `linear-gradient(135deg, ${app.color}, ${hexToRgba(app.color, 0.7)} 52%, ${hexToRgba(app.color, 0.4)})`,
+                }}
+              >
+                <span
+                  className="absolute inset-0 opacity-70"
+                  style={{ background: "radial-gradient(120% 80% at 15% 0%, rgba(255,255,255,.4), transparent 55%)" }}
+                />
+                <span className="pointer-events-none absolute -right-2 -top-8 select-none font-display text-[150px] font-bold leading-none text-white/15">
+                  {(app.shortName?.trim() || initials(app.name)).slice(0, 2)}
+                </span>
+              </span>
+            )}
+            <ProgressiveBlur className="pointer-events-none absolute bottom-0 left-0 h-3/4 w-full" blurIntensity={6} />
+            <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/55 via-black/10 to-transparent" />
+            <div className="absolute inset-x-0 bottom-0 flex items-end gap-3.5 p-4">
+              <AppLogo app={app} size={54} radius={15} className="ring-2 ring-white/25" />
+              <div className="min-w-0 pb-0.5">
+                <div className="flex items-center gap-2">
+                  <h3 className="heading truncate text-[18px] text-white drop-shadow-sm">{app.name}</h3>
+                  <Badge tone={app.status}>{t.status[app.status]}</Badge>
+                </div>
+                <p className="mt-0.5 line-clamp-1 text-[12.5px] leading-relaxed text-white/85">
+                  {app.description}
+                </p>
               </div>
-              <p className="mt-1 line-clamp-2 text-[12.5px] leading-relaxed text-ink-soft">
-                {app.description}
-              </p>
             </div>
           </div>
+
+          {/* about — the richer write-up the creator fills in */}
+          {app.longDescription?.trim() && (
+            <section className="rounded-2xl border border-line bg-canvas/40 p-4">
+              <p className="mb-2 font-mono text-[10px] uppercase tracking-[0.14em] text-ink-mute">
+                {t.apps.about}
+              </p>
+              <p className="whitespace-pre-line text-[13px] leading-relaxed text-ink-soft">
+                {app.longDescription}
+              </p>
+            </section>
+          )}
+
+          {/* maintainer — who to contact */}
+          {app.maintainer?.name && (
+            <section
+              className="flex items-center gap-3.5 rounded-2xl border p-4"
+              style={{ borderColor: hexToRgba(app.color, 0.3), background: hexToRgba(app.color, 0.05) }}
+            >
+              <Avatar name={app.maintainer.name} src={app.maintainer.avatarUrl} size={44} color={app.color} />
+              <div className="min-w-0 flex-1">
+                <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-ink-mute">
+                  {t.apps.contactLabel}
+                </p>
+                <p className="mt-0.5 truncate text-[14px] font-semibold text-ink">{app.maintainer.name}</p>
+                {app.maintainer.title && (
+                  <p className="truncate text-[12px] text-ink-mute">{app.maintainer.title}</p>
+                )}
+              </div>
+              {app.maintainer.email && (
+                <a
+                  href={`mailto:${app.maintainer.email}`}
+                  onClick={(e) => e.stopPropagation()}
+                  title={app.maintainer.email}
+                  className="flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-2 text-[12.5px] font-semibold text-white transition hover:opacity-90"
+                  style={{ background: app.color }}
+                >
+                  <Mail className="h-3.5 w-3.5" />
+                  <span className="hidden sm:inline">{t.apps.contactAction}</span>
+                </a>
+              )}
+            </section>
+          )}
 
           {!allowed && (
             <div className="flex items-center gap-2.5 rounded-xl border border-amber-300/50 bg-amber-50 px-3.5 py-2.5 text-[12.5px] font-medium text-amber-700 dark:border-amber-500/25 dark:bg-amber-500/10 dark:text-amber-300">

@@ -51,7 +51,10 @@ export function resetLocal(): PortalSnapshot {
 
 /* ───────────────────────── supabase row mapping ────────────────────────── */
 
-type AppAuthz = Pick<PortalApp, "sso" | "resources" | "capabilities" | "appRoles" | "grants">;
+type AppAuthz = Pick<
+  PortalApp,
+  "sso" | "resources" | "capabilities" | "appRoles" | "grants" | "coverUrl" | "longDescription" | "maintainer"
+>;
 
 type AppRow = {
   id: string;
@@ -88,6 +91,9 @@ const toApp = (r: AppRow): PortalApp => {
     version: r.version ?? "1.0.0",
     sortOrder: r.sort_order ?? 0,
     createdAt: r.created_at,
+    coverUrl: authz.coverUrl ?? null,
+    longDescription: authz.longDescription ?? "",
+    maintainer: authz.maintainer ?? null,
     sso: authz.sso,
     resources: authz.resources,
     capabilities: authz.capabilities,
@@ -111,6 +117,9 @@ const fromApp = (a: PortalApp) => ({
   version: a.version,
   sort_order: a.sortOrder,
   authz: {
+    coverUrl: a.coverUrl ?? null,
+    longDescription: a.longDescription ?? "",
+    maintainer: a.maintainer ?? null,
     sso: a.sso ?? null,
     resources: a.resources ?? [],
     capabilities: a.capabilities ?? [],
