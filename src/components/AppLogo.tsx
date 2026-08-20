@@ -20,9 +20,9 @@ export function AppLogo({
   const label = app.shortName?.trim() || initials(app.name);
   const s = shape ?? app.logoShape ?? "rounded";
 
-  // circle → fully round & square; portrait → taller than wide; rounded → square.
-  const width = size;
-  const height = s === "portrait" ? Math.round(size * 1.32) : size;
+  // circle → fully round & square; landscape → wider than tall; rounded → square.
+  const width = s === "landscape" ? Math.round(size * 1.32) : size;
+  const height = size;
   const borderRadius = s === "circle" ? 9999 : radius;
 
   return (

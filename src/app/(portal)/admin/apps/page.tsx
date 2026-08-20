@@ -476,7 +476,7 @@ export default function AdminAppsPage() {
                   {LOGO_SHAPES.map((sh) => {
                     const active = (draft.logoShape ?? "rounded") === sh;
                     const label =
-                      sh === "rounded" ? t.apps.shapeRounded : sh === "circle" ? t.apps.shapeCircle : t.apps.shapePortrait;
+                      sh === "rounded" ? t.apps.shapeRounded : sh === "circle" ? t.apps.shapeCircle : t.apps.shapeLandscape;
                     return (
                       <button
                         key={sh}
@@ -490,8 +490,8 @@ export default function AdminAppsPage() {
                         <span
                           className="flex items-center justify-center font-display text-[11px] font-bold text-white"
                           style={{
-                            width: sh === "portrait" ? 22 : 30,
-                            height: sh === "portrait" ? 30 : 30,
+                            width: sh === "landscape" ? 38 : 30,
+                            height: 30,
                             borderRadius: sh === "circle" ? 9999 : 9,
                             background: draft.color,
                           }}

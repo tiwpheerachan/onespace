@@ -69,9 +69,9 @@ export interface PortalApp {
   grants?: AppGrant[];
 }
 
-/** Logo / profile frame shapes: rounded square, circle, or tall portrait. */
-export type LogoShape = "rounded" | "circle" | "portrait";
-export const LOGO_SHAPES: LogoShape[] = ["rounded", "circle", "portrait"];
+/** Logo / profile frame shapes: rounded square, circle, or wide landscape. */
+export type LogoShape = "rounded" | "circle" | "landscape";
+export const LOGO_SHAPES: LogoShape[] = ["rounded", "circle", "landscape"];
 
 /** The person who owns / supports an app — "กรุณาติดต่อ …". */
 export interface AppMaintainer {
