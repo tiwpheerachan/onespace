@@ -14,6 +14,7 @@ import {
   Users as UsersIcon,
   X,
 } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { AppDetail } from "@/components/AppDetail";
 import { AppLogo } from "@/components/AppLogo";
@@ -28,6 +29,7 @@ type View = "grid" | "list";
 
 export default function DashboardPage() {
   const { t, locale } = usePrefs();
+  const router = useRouter();
   const {
     apps,
     roles,
@@ -38,7 +40,6 @@ export default function DashboardPage() {
     favourites,
     toggleFavourite,
     recents,
-    registerLaunch,
     clearRecents,
   } = usePortal();
 
@@ -72,9 +73,9 @@ export default function DashboardPage() {
     .map((r) => ({ app: apps.find((a) => a.id === r.appId), at: r.at }))
     .filter((r): r is { app: PortalApp; at: string } => Boolean(r.app));
 
+  // Open apps inside the portal's own framed viewer instead of a new tab.
   const launch = (app: PortalApp) => {
-    registerLaunch(app);
-    window.open(app.url, "_blank", "noopener,noreferrer");
+    router.push(`/app/${app.id}`);
   };
 
   const stats = [

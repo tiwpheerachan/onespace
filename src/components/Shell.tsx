@@ -24,6 +24,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { CommandPalette } from "@/components/CommandPalette";
+import { MatrixClock } from "@/components/MatrixClock";
 import { Avatar } from "@/components/ui";
 import { Wordmark } from "@/components/Wordmark";
 import { usePortal } from "@/lib/data/store";
@@ -361,6 +362,11 @@ export function Shell({ children }: { children: React.ReactNode }) {
                   {t.demo.badge}
                 </span>
               )}
+              <MatrixClock
+                size={5}
+                gap={1}
+                className="mr-1 hidden rounded-xl border border-line bg-surface/70 px-2.5 py-1.5 text-ink-soft md:flex"
+              />
               <LanguageMenu />
               <ThemeToggle />
               <span className="mx-1 hidden h-6 w-px bg-line sm:block" />

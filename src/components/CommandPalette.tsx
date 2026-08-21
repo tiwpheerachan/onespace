@@ -22,7 +22,7 @@ interface Item {
 export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenChange: (v: boolean) => void }) {
   const router = useRouter();
   const { t, setLang, theme, setTheme } = usePrefs();
-  const { apps, canOpen, registerLaunch, can } = usePortal();
+  const { apps, canOpen, can } = usePortal();
   const [query, setQuery] = useState("");
   const [active, setActive] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -44,10 +44,7 @@ export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenCh
         label: a.name,
         hint: t.cat[a.category],
         icon: <AppLogo app={a} size={26} radius={8} />,
-        run: () => {
-          registerLaunch(a);
-          window.open(a.url, "_blank", "noopener,noreferrer");
-        },
+        run: () => router.push(`/app/${a.id}`),
       }));
 
     const pages: Item[] = [
@@ -85,7 +82,7 @@ export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenCh
     ];
 
     return [...appItems, ...pages, ...actions];
-  }, [apps, canOpen, registerLaunch, router, t, theme, setTheme, setLang, can]);
+  }, [apps, canOpen, router, t, theme, setTheme, setLang, can]);
 
   const filtered = useMemo(() => {
     const q = normalise(query.trim());
