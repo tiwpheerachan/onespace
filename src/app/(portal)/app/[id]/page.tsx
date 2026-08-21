@@ -38,18 +38,31 @@ export default function AppViewerPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [app?.id, allowed]);
 
-  // Heuristic embed-block detection: many sites send X-Frame-Options /
-  // frame-ancestors and never fire `load`. If we don't hear back in time,
-  // assume the frame was refused and offer to open it in a new tab.
+  // Embed-block detection. First ask our server to read the target's framing
+  // headers (X-Frame-Options / CSP frame-ancestors) so a hard-blocked app shows
+  // the message at once. Then keep a load timeout as a secondary safety net for
+  // the cases the header check can't see (unreachable, or per-path blocks).
   useEffect(() => {
     if (!app || !allowed) return;
     loadedRef.current = false;
     setLoading(true);
     setBlocked(false);
+
+    let cancelled = false;
+    fetch(`/api/embed-check?url=${encodeURIComponent(app.url)}`)
+      .then((r) => r.json())
+      .then((d) => {
+        if (!cancelled && d && d.embeddable === false) setBlocked(true);
+      })
+      .catch(() => {});
+
     const timer = setTimeout(() => {
       if (!loadedRef.current) setBlocked(true);
     }, 4500);
-    return () => clearTimeout(timer);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
   }, [app?.url, allowed, reloadKey, app]);
 
   const openExternal = () => {
