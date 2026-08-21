@@ -45,6 +45,7 @@ interface PortalValue extends PortalSnapshot {
   toggleFavourite: (appId: string) => void;
   recents: RecentEntry[];
   registerLaunch: (app: PortalApp) => void;
+  registerUsage: (app: PortalApp, seconds: number) => void;
   clearRecents: () => void;
 
   saveApp: (app: PortalApp) => Promise<void>;
@@ -299,6 +300,18 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
     [log],
   );
 
+  // Record how long a session in an app lasted — as an audit row whose action
+  // carries the seconds ("app.usage:<sec>"), so the Performance page can add
+  // durations up per app / day / user without a new table.
+  const registerUsage = useCallback(
+    (app: PortalApp, seconds: number) => {
+      const s = Math.round(seconds);
+      if (s < 3) return; // ignore accidental blips
+      log(`app.usage:${s}`, app.name);
+    },
+    [log],
+  );
+
   const clearRecents = useCallback(() => {
     setRecents([]);
     window.localStorage.removeItem("nexus.recents");
@@ -329,6 +342,7 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
     toggleFavourite,
     recents,
     registerLaunch,
+    registerUsage,
     clearRecents,
     saveApp,
     deleteApp,

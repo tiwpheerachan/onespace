@@ -5,7 +5,9 @@ import {
   BarChart3,
   Boxes,
   ChevronDown,
+  ChevronUp,
   Command,
+  Gauge,
   Github,
   KeyRound,
   LayoutGrid,
@@ -13,6 +15,8 @@ import {
   LogOut,
   Menu,
   Moon,
+  PanelLeftClose,
+  PanelLeftOpen,
   ScrollText,
   Settings,
   ShieldCheck,
@@ -198,19 +202,46 @@ function UserMenu() {
   );
 }
 
+/** A boolean that persists to localStorage — used for nav collapse prefs. */
+function usePersistentBool(key: string, initial: boolean) {
+  const [value, setValue] = useState(initial);
+  useEffect(() => {
+    try {
+      const s = window.localStorage.getItem(key);
+      if (s != null) setValue(s === "1");
+    } catch {
+      /* ignore */
+    }
+  }, [key]);
+  const set = (v: boolean) => {
+    setValue(v);
+    try {
+      window.localStorage.setItem(key, v ? "1" : "0");
+    } catch {
+      /* ignore */
+    }
+  };
+  return [value, set] as const;
+}
+
 export function Shell({ children }: { children: React.ReactNode }) {
   const { t } = usePrefs();
   const { can, supabaseReady, apps } = usePortal();
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = usePersistentBool("nav.sidebar.collapsed", false);
+  const [headerHidden, setHeaderHidden] = usePersistentBool("nav.header.hidden", false);
 
   useEffect(() => setMobileOpen(false), [pathname]);
 
   const sections = [
     {
       label: t.nav.main,
-      items: [{ href: "/dashboard", label: t.nav.dashboard, icon: LayoutGrid, show: true }],
+      items: [
+        { href: "/dashboard", label: t.nav.dashboard, icon: LayoutGrid, show: true },
+        { href: "/performance", label: t.nav.performance, icon: Gauge, show: true },
+      ],
     },
     {
       label: t.nav.admin,
@@ -234,13 +265,15 @@ export function Shell({ children }: { children: React.ReactNode }) {
     .map((s) => ({ ...s, items: s.items.filter((i) => i.show) }))
     .filter((s) => s.items.length);
 
-  const nav = (
-    <nav className="flex flex-1 flex-col gap-7 px-3">
+  const navList = (collapsed: boolean, layoutIdSuffix: string) => (
+    <nav className={cn("flex flex-1 flex-col gap-7", collapsed ? "px-2.5" : "px-3")}>
       {sections.map((section) => (
         <div key={section.label}>
-          <p className="mb-2 px-3 text-[10.5px] font-bold uppercase tracking-[0.16em] text-ink-mute">
-            {section.label}
-          </p>
+          {!collapsed && (
+            <p className="mb-2 px-3 text-[10.5px] font-bold uppercase tracking-[0.16em] text-ink-mute">
+              {section.label}
+            </p>
+          )}
           <div className="space-y-0.5">
             {section.items.map((item) => {
               const activeItem = pathname === item.href || pathname.startsWith(item.href + "/");
@@ -249,14 +282,16 @@ export function Shell({ children }: { children: React.ReactNode }) {
                 <Link
                   key={item.href}
                   href={item.href}
+                  title={collapsed ? item.label : undefined}
                   className={cn(
-                    "group relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-[13.5px] font-medium transition-colors",
+                    "group relative flex items-center rounded-xl text-[13.5px] font-medium transition-colors",
+                    collapsed ? "justify-center px-2.5 py-2.5" : "gap-3 px-3 py-2.5",
                     activeItem ? "text-ink" : "text-ink-soft hover:text-ink",
                   )}
                 >
                   {activeItem && (
                     <motion.span
-                      layoutId="nav-active"
+                      layoutId={`nav-active-${layoutIdSuffix}`}
                       transition={{ type: "spring", stiffness: 400, damping: 34 }}
                       className="absolute inset-0 rounded-xl border border-line bg-surface shadow-card"
                     />
@@ -267,7 +302,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
                       activeItem ? "text-brand-600" : "text-ink-mute group-hover:text-ink-soft",
                     )}
                   />
-                  <span className="relative">{item.label}</span>
+                  {!collapsed && <span className="relative">{item.label}</span>}
                 </Link>
               );
             })}
@@ -280,27 +315,41 @@ export function Shell({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex min-h-screen">
       {/* ── desktop sidebar ─────────────────────────────── */}
-      <aside className="sticky top-0 hidden h-screen w-[264px] shrink-0 flex-col border-r border-line bg-surface/60 py-6 backdrop-blur-xl lg:flex">
-        <div className="px-6 pb-8">
-          <Brand />
+      <aside
+        className={cn(
+          "sticky top-0 hidden h-screen shrink-0 flex-col border-r border-line bg-surface/60 py-6 backdrop-blur-xl transition-[width] duration-300 ease-out lg:flex",
+          sidebarCollapsed ? "w-[74px]" : "w-[264px]",
+        )}
+      >
+        <div className={cn("flex items-center pb-8", sidebarCollapsed ? "flex-col gap-3 px-3" : "justify-between px-6")}>
+          <Brand compact={sidebarCollapsed} />
+          <button
+            onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+            title={sidebarCollapsed ? t.nav.expand : t.nav.collapse}
+            className="flex h-8 w-8 items-center justify-center rounded-lg text-ink-mute transition hover:bg-canvas hover:text-ink"
+          >
+            {sidebarCollapsed ? <PanelLeftOpen className="h-[18px] w-[18px]" /> : <PanelLeftClose className="h-[18px] w-[18px]" />}
+          </button>
         </div>
-        {nav}
-        <div className="mt-6 px-6">
-          <div className="rounded-xl border border-line bg-canvas/70 p-3.5">
-            <p className="text-[11.5px] font-semibold text-ink">{t.brand.company}</p>
-            <p className="mt-0.5 text-[11px] leading-relaxed text-ink-mute">
-              {apps.length} {t.apps.count}
-            </p>
-            <div className="mt-2.5 h-1 overflow-hidden rounded-full bg-line">
-              <motion.div
-                initial={{ width: 0 }}
-                animate={{ width: "86%" }}
-                transition={{ duration: 1.2, ease: [0.22, 1, 0.36, 1] }}
-                className="h-full rounded-full bg-gradient-to-r from-brand-600 to-teal-500"
-              />
+        {navList(sidebarCollapsed, "desktop")}
+        {!sidebarCollapsed && (
+          <div className="mt-6 px-6">
+            <div className="rounded-xl border border-line bg-canvas/70 p-3.5">
+              <p className="text-[11.5px] font-semibold text-ink">{t.brand.company}</p>
+              <p className="mt-0.5 text-[11px] leading-relaxed text-ink-mute">
+                {apps.length} {t.apps.count}
+              </p>
+              <div className="mt-2.5 h-1 overflow-hidden rounded-full bg-line">
+                <motion.div
+                  initial={{ width: 0 }}
+                  animate={{ width: "86%" }}
+                  transition={{ duration: 1.2, ease: [0.22, 1, 0.36, 1] }}
+                  className="h-full rounded-full bg-gradient-to-r from-brand-600 to-teal-500"
+                />
+              </div>
             </div>
           </div>
-        </div>
+        )}
       </aside>
 
       {/* ── mobile drawer ───────────────────────────────── */}
@@ -327,7 +376,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
                   <X className="h-5 w-5" />
                 </button>
               </div>
-              {nav}
+              {navList(false, "mobile")}
             </motion.aside>
           </div>
         )}
@@ -335,7 +384,16 @@ export function Shell({ children }: { children: React.ReactNode }) {
 
       {/* ── main column ─────────────────────────────────── */}
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="sticky top-0 z-40 border-b border-line glass">
+        {headerHidden && (
+          <button
+            onClick={() => setHeaderHidden(false)}
+            title={t.nav.showBar}
+            className="sticky top-0 z-40 flex h-6 w-full items-center justify-center border-b border-line bg-surface/80 text-ink-mute backdrop-blur transition hover:text-ink"
+          >
+            <ChevronDown className="h-4 w-4" />
+          </button>
+        )}
+        <header className={cn("sticky top-0 z-40 border-b border-line glass", headerHidden && "hidden")}>
           <div className="flex h-16 items-center gap-3 px-4 sm:px-6 lg:px-8">
             <button
               onClick={() => setMobileOpen(true)}
@@ -369,6 +427,13 @@ export function Shell({ children }: { children: React.ReactNode }) {
               />
               <LanguageMenu />
               <ThemeToggle />
+              <button
+                onClick={() => setHeaderHidden(true)}
+                title={t.nav.hideBar}
+                className="hidden h-9 w-9 items-center justify-center rounded-lg text-ink-mute transition hover:bg-canvas hover:text-ink sm:flex"
+              >
+                <ChevronUp className="h-[18px] w-[18px]" />
+              </button>
               <span className="mx-1 hidden h-6 w-px bg-line sm:block" />
               <UserMenu />
             </div>

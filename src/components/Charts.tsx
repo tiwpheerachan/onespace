@@ -50,7 +50,17 @@ export interface BarItem {
   leading?: React.ReactNode;
 }
 
-export function BarList({ items, unit }: { items: BarItem[]; unit?: string }) {
+export function BarList({
+  items,
+  unit,
+  format,
+}: {
+  items: BarItem[];
+  unit?: string;
+  /** Format the displayed value (e.g. seconds → "2h 5m"). Defaults to a number. */
+  format?: (v: number) => string;
+}) {
+  const fmt = (v: number) => (format ? format(v) : v.toLocaleString());
   const max = Math.max(1, ...items.map((i) => i.value));
   const total = items.reduce((s, i) => s + i.value, 0) || 1;
   return (
@@ -69,7 +79,7 @@ export function BarList({ items, unit }: { items: BarItem[]; unit?: string }) {
                 {it.label}
               </span>
               <span className="shrink-0 font-mono text-[13px] font-semibold tabular-nums text-ink">
-                {it.value.toLocaleString()}
+                {fmt(it.value)}
               </span>
               <span className="w-9 shrink-0 text-right font-mono text-[11px] tabular-nums text-ink-mute">
                 {share}%
@@ -83,7 +93,7 @@ export function BarList({ items, unit }: { items: BarItem[]; unit?: string }) {
                   background: i === 0 ? ACCENT_STRONG : ACCENT,
                   opacity: i === 0 ? 1 : 0.9 - Math.min(i, 6) * 0.07,
                 }}
-                title={`${it.value.toLocaleString()}${unit ? " " + unit : ""}`}
+                title={`${fmt(it.value)}${unit ? " " + unit : ""}`}
               />
             </div>
           </li>
@@ -106,12 +116,15 @@ export function ColumnChart({
   labelEvery = 6,
   formatX,
   formatTip,
+  formatValue,
   height = 210,
 }: {
   data: { x: number; value: number; label: string }[];
   labelEvery?: number;
   formatX?: (x: number) => string;
   formatTip?: (d: { x: number; value: number; label: string }) => React.ReactNode;
+  /** Format the peak-value label above the tallest bar. Defaults to the number. */
+  formatValue?: (v: number) => string;
   height?: number;
 }) {
   const { ref, w } = useWidth<HTMLDivElement>();
@@ -194,7 +207,7 @@ export function ColumnChart({
                     textAnchor="middle"
                     className="fill-ink font-mono text-[11px] font-semibold"
                   >
-                    {d.value}
+                    {formatValue ? formatValue(d.value) : d.value}
                   </text>
                 )}
                 {i % labelEvery === 0 && (

@@ -21,7 +21,7 @@ export default function AppViewerPage() {
   const id = Array.isArray(params.id) ? params.id[0] : params.id;
   const router = useRouter();
   const { t } = usePrefs();
-  const { apps, canOpen, registerLaunch, loading: portalLoading } = usePortal();
+  const { apps, canOpen, registerLaunch, registerUsage, loading: portalLoading } = usePortal();
 
   const app = apps.find((a) => a.id === id);
   const allowed = app ? canOpen(app) : false;
@@ -35,6 +35,25 @@ export default function AppViewerPage() {
   // Count this as a launch (feeds "recent" + insights), once per app opened.
   useEffect(() => {
     if (app && allowed) registerLaunch(app);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [app?.id, allowed]);
+
+  // Measure how long this session lasts and log it on leave (unmount or tab
+  // close), so the Performance page can total time-in-app per user.
+  const usageRef = useRef({ start: 0, logged: false });
+  useEffect(() => {
+    if (!app || !allowed) return;
+    usageRef.current = { start: Date.now(), logged: false };
+    const flush = () => {
+      if (usageRef.current.logged || !usageRef.current.start) return;
+      usageRef.current.logged = true;
+      registerUsage(app, (Date.now() - usageRef.current.start) / 1000);
+    };
+    window.addEventListener("pagehide", flush);
+    return () => {
+      flush();
+      window.removeEventListener("pagehide", flush);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [app?.id, allowed]);
 
