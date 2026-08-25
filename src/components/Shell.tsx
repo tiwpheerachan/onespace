@@ -235,6 +235,10 @@ export function Shell({ children }: { children: React.ReactNode }) {
 
   useEffect(() => setMobileOpen(false), [pathname]);
 
+  // The embedded app viewer runs edge-to-edge (no max-width / padding / footer)
+  // so the framed app fills the whole screen and stays responsive.
+  const fullBleed = pathname.startsWith("/app/");
+
   const sections = [
     {
       label: t.nav.main,
@@ -440,22 +444,35 @@ export function Shell({ children }: { children: React.ReactNode }) {
           </div>
         </header>
 
-        <main className="relative flex-1">
-          <div className="pointer-events-none absolute inset-x-0 top-0 h-64 bg-gradient-to-b from-brand-50/60 to-transparent dark:from-brand-500/5" />
-          <div className="relative mx-auto w-full max-w-[1400px] px-4 py-8 sm:px-6 lg:px-8">{children}</div>
+        <main className={cn("relative flex-1", fullBleed && "flex min-h-0 flex-col")}>
+          {!fullBleed && (
+            <div className="pointer-events-none absolute inset-x-0 top-0 h-64 bg-gradient-to-b from-brand-50/60 to-transparent dark:from-brand-500/5" />
+          )}
+          <div
+            className={cn(
+              "relative",
+              fullBleed
+                ? "flex min-h-0 flex-1 flex-col"
+                : "mx-auto w-full max-w-[1400px] px-4 py-8 sm:px-6 lg:px-8",
+            )}
+          >
+            {children}
+          </div>
         </main>
 
-        <footer className="border-t border-line px-4 py-5 sm:px-6 lg:px-8">
-          <div className="mx-auto flex max-w-[1400px] flex-col items-center justify-between gap-2 text-[11.5px] text-ink-mute sm:flex-row">
-            <p>
-              © {new Date().getFullYear()} {t.brand.company} · {t.brand.name} {t.brand.suffix}
-            </p>
-            <p className="flex items-center gap-1.5">
-              <Github className="h-3.5 w-3.5" />
-              Next.js · Supabase · Tailwind
-            </p>
-          </div>
-        </footer>
+        {!fullBleed && (
+          <footer className="border-t border-line px-4 py-5 sm:px-6 lg:px-8">
+            <div className="mx-auto flex max-w-[1400px] flex-col items-center justify-between gap-2 text-[11.5px] text-ink-mute sm:flex-row">
+              <p>
+                © {new Date().getFullYear()} {t.brand.company} · {t.brand.name} {t.brand.suffix}
+              </p>
+              <p className="flex items-center gap-1.5">
+                <Github className="h-3.5 w-3.5" />
+                Next.js · Supabase · Tailwind
+              </p>
+            </div>
+          </footer>
+        )}
       </div>
 
       <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} />

@@ -129,9 +129,9 @@ export default function AppViewerPage() {
 
   // ── viewer — a framed window that fills the content area ──
   return (
-    <div className="-my-8 flex h-[calc(100vh-4rem)] flex-col">
+    <div className="flex min-h-0 flex-1 flex-col">
       {/* toolbar */}
-      <div className="flex items-center gap-3 border-b border-line py-3">
+      <div className="flex items-center gap-3 border-b border-line px-4 py-3 sm:px-6">
         <button
           onClick={() => router.push("/dashboard")}
           title={t.viewer.back}
@@ -175,7 +175,7 @@ export default function AppViewerPage() {
       </div>
 
       {/* frame area */}
-      <div className="relative flex-1 overflow-hidden rounded-b-2xl bg-canvas/40">
+      <div className="relative flex-1 overflow-hidden bg-canvas/40">
         {/* loading shimmer */}
         {loading && !blocked && (
           <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 bg-surface">
