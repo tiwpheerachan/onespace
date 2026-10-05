@@ -4,12 +4,14 @@ import { AnimatePresence, motion } from "framer-motion";
 import {
   BarChart3,
   Boxes,
+  Check,
   ChevronDown,
   ChevronUp,
   Command,
   Gauge,
   Github,
   KeyRound,
+  Layers,
   LayoutGrid,
   Languages,
   LogOut,
@@ -99,6 +101,89 @@ function LanguageMenu() {
                 {LANG_META[l].native}
               </button>
             ))}
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+/** Hat switcher (SSO doc §1.6) — shown only to people holding two or more hats. */
+function HatSwitcher() {
+  const { t } = usePrefs();
+  const { assignments, activeAssignment, switchAssignment, roles } = usePortal();
+  const pathname = usePathname();
+  const router = useRouter();
+  const [open, setOpen] = useState(false);
+  useEffect(() => {
+    const close = () => setOpen(false);
+    if (open) document.addEventListener("click", close);
+    return () => document.removeEventListener("click", close);
+  }, [open]);
+
+  if (assignments.length < 2 || !activeAssignment) return null;
+
+  const roleNames = (keys: string[]) =>
+    keys.map((k) => roles.find((r) => r.key === k)?.name ?? k).join(" · ");
+
+  return (
+    <div className="relative" onClick={(e) => e.stopPropagation()}>
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="flex h-9 max-w-[15rem] items-center gap-1.5 rounded-lg border border-line bg-surface px-2.5 text-[12.5px] font-semibold text-ink-soft transition hover:border-brand-300 hover:text-ink"
+        title={`${t.hat.wearing}: ${activeAssignment.label}`}
+      >
+        <Layers className="h-4 w-4 shrink-0" />
+        <span className="hidden truncate lg:inline">{activeAssignment.label}</span>
+        <ChevronDown className="h-3.5 w-3.5 shrink-0" />
+      </button>
+      <AnimatePresence>
+        {open && (
+          <motion.div
+            initial={{ opacity: 0, y: -6, scale: 0.97 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -6, scale: 0.97 }}
+            transition={{ duration: 0.16 }}
+            className="absolute right-0 z-50 mt-2 w-72 max-w-[calc(100vw-2rem)] overflow-hidden rounded-xl border border-line bg-surface p-1 shadow-lift"
+          >
+            <div className="border-b border-line px-3 py-2.5">
+              <p className="text-[13px] font-semibold text-ink">{t.hat.switchTitle}</p>
+              <p className="mt-0.5 text-[11.5px] leading-snug text-ink-mute">{t.hat.switchHint}</p>
+            </div>
+            {assignments.map((a) => {
+              const active = a.id === activeAssignment.id;
+              return (
+                <button
+                  key={a.id}
+                  onClick={() => {
+                    setOpen(false);
+                    if (active) return;
+                    switchAssignment(a.id);
+                    // admin pages may be out of reach in the new hat — start over from the dashboard
+                    if (pathname.startsWith("/admin")) router.push("/dashboard");
+                  }}
+                  className={cn(
+                    "flex w-full items-start gap-2.5 rounded-lg px-2.5 py-2 text-left transition",
+                    active ? "bg-canvas" : "hover:bg-canvas",
+                  )}
+                >
+                  <Check className={cn("mt-0.5 h-4 w-4 shrink-0 text-brand-600", !active && "invisible")} />
+                  <span className="min-w-0 flex-1">
+                    <span className={cn("block text-[13px] text-ink", active && "font-semibold")}>
+                      {a.label}
+                    </span>
+                    <span className="mt-0.5 flex items-center gap-1.5 text-[11.5px] text-ink-mute">
+                      {roleNames(a.roles)}
+                      {a.isPrimary && (
+                        <span className="rounded-full bg-brand-50 px-1.5 py-px text-[10.5px] font-semibold text-brand-700 dark:bg-brand-500/10 dark:text-brand-300">
+                          {t.hat.primary}
+                        </span>
+                      )}
+                    </span>
+                  </span>
+                </button>
+              );
+            })}
           </motion.div>
         )}
       </AnimatePresence>
@@ -429,6 +514,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
                 gap={1}
                 className="mr-1 hidden rounded-xl border border-line bg-surface/70 px-2.5 py-1.5 text-ink-soft md:flex"
               />
+              <HatSwitcher />
               <LanguageMenu />
               <ThemeToggle />
               <button

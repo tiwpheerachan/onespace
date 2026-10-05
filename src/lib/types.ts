@@ -164,6 +164,21 @@ export interface PortalUser {
   lastLogin: string | null;
 }
 
+/**
+ * A "hat" — one of the person's affiliations (ใบสังกัด), as Onelogin sends it in
+ * `assignments` (SSO doc §1.6). Picking a hat applies every role of that
+ * affiliation at once; the person never picks a loose role.
+ */
+export interface Assignment {
+  /** Stable across logins — the last-used hat is remembered by this id. */
+  id: string;
+  /** Ready-to-show text, e.g. "พนักงานบัญชี · สาขาใหญ่". */
+  label: string;
+  /** The primary affiliation — only the default hat, it carries no extra rights. */
+  isPrimary: boolean;
+  roles: string[];
+}
+
 export interface AuditEntry {
   id: string;
   actor: string;

@@ -18,8 +18,9 @@ import {
   signOut as repoSignOut,
   type PortalSnapshot,
 } from "@/lib/data/repository";
+import { loadAssignments, pickDefaultAssignment } from "@/lib/assignments";
 import { isSupabaseConfigured } from "@/lib/supabase/client";
-import type { AuditEntry, Permission, PortalApp, PortalUser, Role } from "@/lib/types";
+import type { Assignment, AuditEntry, Permission, PortalApp, PortalUser, Role } from "@/lib/types";
 import { uid } from "@/lib/utils";
 
 interface RecentEntry {
@@ -35,6 +36,10 @@ interface PortalValue extends PortalSnapshot {
 
   currentUser: PortalUser | null;
   currentRole: Role | null;
+  /** The person's hats (ใบสังกัด). Fewer than two = nothing to switch. */
+  assignments: Assignment[];
+  activeAssignment: Assignment | null;
+  switchAssignment: (id: string) => void;
   can: (permission: Permission) => boolean;
   canOpen: (app: PortalApp) => boolean;
 
@@ -69,6 +74,8 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
   const [sessionEmail, setSessionEmail] = useState<string | null>(null);
   const [favourites, setFavourites] = useState<string[]>([]);
   const [recents, setRecents] = useState<RecentEntry[]>([]);
+  const [assignments, setAssignments] = useState<Assignment[]>([]);
+  const [activeAssignmentId, setActiveAssignmentId] = useState<string | null>(null);
 
   /* ── boot ─────────────────────────────────────────────── */
   useEffect(() => {
@@ -101,10 +108,48 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
     [data.users, sessionEmail],
   );
 
-  const currentRole = useMemo(
-    () => data.roles.find((r) => r.key === currentUser?.roleKey) ?? null,
-    [data.roles, currentUser],
+  /* ── hats ─────────────────────────────────────────────── */
+  const sessionUserEmail = currentUser?.email.toLowerCase() ?? null;
+  useEffect(() => {
+    setAssignments([]);
+    setActiveAssignmentId(null);
+    if (!sessionUserEmail) return;
+    let alive = true;
+    (async () => {
+      const list = await loadAssignments(sessionUserEmail).catch(() => []);
+      if (!alive) return;
+      const lastUsed = window.localStorage.getItem(`nexus.hat.${sessionUserEmail}`);
+      setAssignments(list);
+      setActiveAssignmentId(pickDefaultAssignment(list, lastUsed)?.id ?? null);
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [sessionUserEmail]);
+
+  const activeAssignment = useMemo(
+    () => assignments.find((a) => a.id === activeAssignmentId) ?? null,
+    [assignments, activeAssignmentId],
   );
+
+  // Rights come from the hat being worn only (plan "แบบ ข") — never the union of
+  // every hat, so a request raised in one hat can't be approved from another.
+  // Without hats, the person's single portal role applies as before.
+  const activeRoleKeys = useMemo(
+    () => activeAssignment?.roles ?? (currentUser ? [currentUser.roleKey] : []),
+    [activeAssignment, currentUser],
+  );
+
+  const currentRole = useMemo(() => {
+    const held = data.roles.filter((r) => activeRoleKeys.includes(r.key));
+    if (held.length <= 1) return held[0] ?? null;
+    // a hat carrying several roles applies all of them at once
+    return {
+      ...held[0],
+      name: held.map((r) => r.name).join(" + "),
+      permissions: Array.from(new Set(held.flatMap((r) => r.permissions))),
+    };
+  }, [data.roles, activeRoleKeys]);
 
   const can = useCallback(
     (permission: Permission) => Boolean(currentRole?.permissions.includes(permission)),
@@ -117,9 +162,9 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
       if (currentRole.permissions.includes("app.manage")) return true;
       if (!currentRole.permissions.includes("app.launch")) return false;
       if (!app.roles.length) return true;
-      return app.roles.includes(currentRole.key);
+      return app.roles.some((key) => activeRoleKeys.includes(key));
     },
-    [currentRole],
+    [currentRole, activeRoleKeys],
   );
 
   /* ── mutations ────────────────────────────────────────── */
@@ -140,6 +185,17 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
       });
     },
     [currentUser],
+  );
+
+  const switchAssignment = useCallback(
+    (id: string) => {
+      const next = assignments.find((a) => a.id === id);
+      if (!next || !sessionUserEmail || next.id === activeAssignmentId) return;
+      setActiveAssignmentId(next.id);
+      window.localStorage.setItem(`nexus.hat.${sessionUserEmail}`, next.id);
+      log("assignment.switch", next.label);
+    },
+    [assignments, activeAssignmentId, sessionUserEmail, log],
   );
 
   const saveApp = useCallback(
@@ -334,6 +390,9 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
     supabaseReady: isSupabaseConfigured,
     currentUser,
     currentRole,
+    assignments,
+    activeAssignment,
+    switchAssignment,
     can,
     canOpen,
     signIn,

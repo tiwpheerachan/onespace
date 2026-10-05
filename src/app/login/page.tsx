@@ -35,7 +35,7 @@ export default function LoginPage() {
   const [show, setShow] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(false);
-  const [ssoErr, setSsoErr] = useState(false);
+  const [ssoErr, setSsoErr] = useState<string | null>(null);
 
   useEffect(() => {
     if (!loading && currentUser) router.replace("/dashboard");
@@ -43,7 +43,7 @@ export default function LoginPage() {
 
   // The SSO routes bounce failures back here as ?sso=<reason>.
   useEffect(() => {
-    if (new URLSearchParams(window.location.search).has("sso")) setSsoErr(true);
+    setSsoErr(new URLSearchParams(window.location.search).get("sso"));
   }, []);
 
   const submit = async (e: React.FormEvent) => {
@@ -193,7 +193,7 @@ export default function LoginPage() {
                 </a>
                 {ssoErr && (
                   <p className="mt-3 rounded-xl border border-rose-400/30 bg-rose-500/15 px-3.5 py-2.5 text-[12.5px] font-medium text-rose-200">
-                    {t.login.ssoError}
+                    {ssoErr === "ended" ? t.login.ssoEnded : t.login.ssoError}
                   </p>
                 )}
                 <div className="mt-6 flex items-center gap-3 text-[11px] font-medium uppercase tracking-wider text-white/40">
