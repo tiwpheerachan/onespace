@@ -1,4 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { requestUser } from "@/lib/supabase/request-user";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -10,11 +12,19 @@ export const dynamic = "force-dynamic";
  * viewer show a clear "open in a new tab" message immediately instead of a
  * confusing empty frame.
  *
- * Only admin-configured app URLs reach this, and we never proxy the body — just
- * inspect the framing headers.
+ * Signed-in users only, and only for a URL registered as a portal app — so this
+ * can't be used to make our server fetch arbitrary (internal) addresses. We
+ * never proxy the body, just inspect the framing headers.
  */
 export async function GET(req: NextRequest) {
+  if (!(await requestUser(req))) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   const target = new URL(req.url).searchParams.get("url") || "";
+
+  const admin = getSupabaseAdmin();
+  const { data: known } = admin
+    ? await admin.from("portal_apps").select("id").eq("url", target).limit(1)
+    : { data: null };
+  if (!known?.length) return NextResponse.json({ embeddable: true, reason: "unknown-app" });
 
   let u: URL;
   try {
@@ -31,7 +41,7 @@ export async function GET(req: NextRequest) {
     const timer = setTimeout(() => ctrl.abort(), 6000);
     const res = await fetch(u.toString(), {
       method: "GET",
-      redirect: "follow",
+      redirect: "manual", // a redirect could point anywhere — read only the app URL itself
       cache: "no-store",
       signal: ctrl.signal,
       headers: { "user-agent": "Mozilla/5.0 (compatible; OneSpacePortal/1.0)" },

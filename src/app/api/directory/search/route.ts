@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { requestUser } from "@/lib/supabase/request-user";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -7,9 +8,10 @@ export const dynamic = "force-dynamic";
  * Proxy to the central directory search (Step G). The CENTRAL_API_KEY is read
  * here on the server only — the browser never sees it. We pass through just the
  * fields the picker needs and never persist anything: the directory is PII on
- * loan from Lark, not ours to keep.
+ * loan from Lark, not ours to keep. Signed-in users only.
  */
 export async function GET(req: NextRequest) {
+  if (!(await requestUser(req))) return NextResponse.json({ items: [], error: "unauthorized" }, { status: 401 });
   const key = process.env.CENTRAL_API_KEY;
   const base = (process.env.SSO_BASE_URL || "https://sso.shd-technology.co.th").replace(/\/$/, "");
   const q = (new URL(req.url).searchParams.get("q") || "").trim();

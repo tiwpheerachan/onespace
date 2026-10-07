@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import { AppLogo } from "@/components/AppLogo";
 import { usePortal } from "@/lib/data/store";
 import { usePrefs } from "@/lib/i18n/provider";
+import { authHeader } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 
 function hostOf(url: string) {
@@ -68,7 +69,8 @@ export default function AppViewerPage() {
     setBlocked(false);
 
     let cancelled = false;
-    fetch(`/api/embed-check?url=${encodeURIComponent(app.url)}`)
+    authHeader()
+      .then((headers) => fetch(`/api/embed-check?url=${encodeURIComponent(app.url)}`, { headers }))
       .then((r) => r.json())
       .then((d) => {
         if (!cancelled && d && d.embeddable === false) setBlocked(true);

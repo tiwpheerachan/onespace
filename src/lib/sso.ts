@@ -1,10 +1,9 @@
 /**
  * Central-identity (SSO) configuration — server side only.
  *
- * ONE SPACE is registered as a child app on sso.shd-technology.co.th in
- * "app-controlled" mode: the central system answers *who* the visitor is, and
- * the portal keeps its own role model for *what* they may do. So we only need
- * the login handshake (authorize → verify), never the /authz endpoints.
+ * ONE SPACE is app 13 on sso.shd-technology.co.th. The central system answers
+ * *who* the visitor is and, through `app.roles`, *what* they may do here — see
+ * src/lib/onelogin-roles.ts for how those map onto portal roles.
  *
  * client_secret must never reach the browser — it is read here, inside server
  * route handlers, exclusively.

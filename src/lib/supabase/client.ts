@@ -17,3 +17,9 @@ export function getSupabase(): SupabaseClient | null {
   if (!cached) cached = createBrowserClient(SUPABASE_URL, SUPABASE_ANON_KEY);
   return cached;
 }
+
+/** `Authorization` header for our own API routes — empty when signed out / demo. */
+export async function authHeader(): Promise<Record<string, string>> {
+  const token = (await getSupabase()?.auth.getSession())?.data.session?.access_token;
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}

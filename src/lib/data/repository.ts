@@ -51,10 +51,11 @@ export function resetLocal(): PortalSnapshot {
 
 /* ───────────────────────── supabase row mapping ────────────────────────── */
 
-type AppAuthz = Pick<
-  PortalApp,
-  "sso" | "resources" | "capabilities" | "appRoles" | "grants" | "coverUrl" | "logoShape" | "longDescription" | "maintainer"
->;
+// portal_apps.authz holds display-only extras every signed-in user may read.
+// The SSO secret, grants and resource model live in portal_app_authz, which
+// only app.manage holders can read (supabase/onelogin_roles.sql).
+type AppDisplay = Pick<PortalApp, "coverUrl" | "logoShape" | "longDescription" | "maintainer">;
+type AppAuthz = Pick<PortalApp, "sso" | "resources" | "capabilities" | "appRoles" | "grants">;
 
 type AppRow = {
   id: string;
@@ -71,11 +72,12 @@ type AppRow = {
   version: string | null;
   sort_order: number | null;
   created_at: string;
-  authz: AppAuthz | null;
+  authz: (AppDisplay & Partial<AppAuthz>) | null;
 };
 
-const toApp = (r: AppRow): PortalApp => {
-  const authz = r.authz ?? {};
+const toApp = (r: AppRow, secret?: Partial<AppAuthz>): PortalApp => {
+  // rows written before the split still carry the secret part in portal_apps
+  const authz = { ...(r.authz ?? {}), ...(secret ?? {}) };
   return {
     id: r.id,
     name: r.name,
@@ -122,6 +124,12 @@ const fromApp = (a: PortalApp) => ({
     logoShape: a.logoShape ?? "rounded",
     longDescription: a.longDescription ?? "",
     maintainer: a.maintainer ?? null,
+  },
+});
+
+const fromAppAuthz = (a: PortalApp) => ({
+  app_id: a.id,
+  authz: {
     sso: a.sso ?? null,
     resources: a.resources ?? [],
     capabilities: a.capabilities ?? [],
@@ -201,8 +209,10 @@ export async function loadSnapshot(): Promise<PortalSnapshot> {
   const sb = getSupabase();
   if (!sb) return readLocal();
 
-  const [apps, roles, users, audit] = await Promise.all([
+  const [apps, secrets, roles, users, audit] = await Promise.all([
     sb.from("portal_apps").select("*").order("sort_order", { ascending: true }),
+    // RLS returns rows only to app.manage holders; everyone else gets none
+    sb.from("portal_app_authz").select("app_id, authz"),
     sb.from("portal_roles").select("*").order("name", { ascending: true }),
     sb.from("portal_users").select("*").order("name", { ascending: true }),
     sb.from("portal_audit").select("*").order("at", { ascending: false }).limit(1000),
@@ -211,14 +221,18 @@ export async function loadSnapshot(): Promise<PortalSnapshot> {
   const failure = apps.error || roles.error || users.error || audit.error;
   if (failure) throw new Error(failure.message);
 
+  const secretOf = new Map(
+    ((secrets.data ?? []) as { app_id: string; authz: Partial<AppAuthz> }[]).map((r) => [r.app_id, r.authz]),
+  );
   return {
-    apps: (apps.data as AppRow[]).map(toApp),
+    apps: (apps.data as AppRow[]).map((r) => toApp(r, secretOf.get(r.id))),
     roles: (roles.data as RoleRow[]).map(toRole),
     users: (users.data as UserRow[]).map(toUser),
     audit: (audit.data ?? []) as AuditEntry[],
   };
 }
 
+/** Throws when the database refuses the write (e.g. RLS: no permission). */
 export async function persist(snapshot: PortalSnapshot, changed: keyof PortalSnapshot, row?: unknown) {
   const sb = getSupabase();
   if (!sb) {
@@ -226,12 +240,19 @@ export async function persist(snapshot: PortalSnapshot, changed: keyof PortalSna
     return;
   }
   if (!row) return;
-  if (changed === "apps") await sb.from("portal_apps").upsert(fromApp(row as PortalApp));
-  if (changed === "users") await sb.from("portal_users").upsert(fromUser(row as PortalUser));
-  if (changed === "roles") await sb.from("portal_roles").upsert(fromRole(row as Role));
-  if (changed === "audit") await sb.from("portal_audit").insert(row as AuditEntry);
+  const check = ({ error }: { error: { message: string } | null }) => {
+    if (error) throw new Error(error.message);
+  };
+  if (changed === "apps") {
+    check(await sb.from("portal_apps").upsert(fromApp(row as PortalApp)));
+    check(await sb.from("portal_app_authz").upsert(fromAppAuthz(row as PortalApp)));
+  }
+  if (changed === "users") check(await sb.from("portal_users").upsert(fromUser(row as PortalUser)));
+  if (changed === "roles") check(await sb.from("portal_roles").upsert(fromRole(row as Role)));
+  if (changed === "audit") check(await sb.from("portal_audit").insert(row as AuditEntry));
 }
 
+/** Throws when the database refuses the delete. */
 export async function remove(snapshot: PortalSnapshot, table: keyof PortalSnapshot, id: string) {
   const sb = getSupabase();
   if (!sb) {
@@ -244,7 +265,8 @@ export async function remove(snapshot: PortalSnapshot, table: keyof PortalSnapsh
     roles: "portal_roles",
     audit: "portal_audit",
   };
-  await sb.from(map[table]).delete().eq("id", id);
+  const { error } = await sb.from(map[table]).delete().eq("id", id);
+  if (error) throw new Error(error.message);
 }
 
 export async function signIn(email: string, password: string): Promise<{ email: string } | null> {

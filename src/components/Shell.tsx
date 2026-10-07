@@ -311,7 +311,7 @@ function usePersistentBool(key: string, initial: boolean) {
 
 export function Shell({ children }: { children: React.ReactNode }) {
   const { t } = usePrefs();
-  const { can, supabaseReady, apps } = usePortal();
+  const { can, supabaseReady, apps, writeError, dismissWriteError } = usePortal();
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -542,6 +542,17 @@ export function Shell({ children }: { children: React.ReactNode }) {
                 : "mx-auto w-full max-w-[1400px] px-4 py-8 sm:px-6 lg:px-8",
             )}
           >
+            {writeError && (
+              <div
+                role="alert"
+                className="mb-4 flex items-start justify-between gap-3 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-[13px] text-rose-700 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-300"
+              >
+                <span>{t.dash.writeRefused}</span>
+                <button onClick={dismissWriteError} className="shrink-0 font-medium underline">
+                  OK
+                </button>
+              </div>
+            )}
             {children}
           </div>
         </main>

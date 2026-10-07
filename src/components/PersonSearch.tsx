@@ -4,6 +4,7 @@ import { AlertTriangle, Loader2, Search, UserPlus } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Avatar } from "@/components/ui";
 import { usePrefs } from "@/lib/i18n/provider";
+import { authHeader } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 
 export interface DirectoryPerson {
@@ -54,7 +55,10 @@ export function PersonSearch({
     const ctrl = new AbortController();
     const id = setTimeout(async () => {
       try {
-        const r = await fetch(`/api/directory/search?q=${encodeURIComponent(term)}`, { signal: ctrl.signal });
+        const r = await fetch(`/api/directory/search?q=${encodeURIComponent(term)}`, {
+          signal: ctrl.signal,
+          headers: await authHeader(),
+        });
         const data = await r.json();
         setItems(Array.isArray(data.items) ? data.items : []);
         setStale(Boolean(data.stale));

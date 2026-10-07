@@ -19,9 +19,39 @@ import {
   type PortalSnapshot,
 } from "@/lib/data/repository";
 import { loadAssignments, pickDefaultAssignment } from "@/lib/assignments";
-import { isSupabaseConfigured } from "@/lib/supabase/client";
+import { portalRoleKeys } from "@/lib/onelogin-roles";
+import { getSupabase, isSupabaseConfigured } from "@/lib/supabase/client";
 import type { Assignment, AuditEntry, Permission, PortalApp, PortalUser, Role } from "@/lib/types";
 import { uid } from "@/lib/utils";
+
+/** Who the Supabase session says this is, when it came through Onelogin SSO. */
+interface SsoIdentity {
+  email: string;
+  name: string;
+  avatarUrl: string | null;
+  department: string;
+  /** portal role keys mapped from Onelogin app.roles */
+  roleKeys: string[];
+}
+
+async function loadSsoIdentity(): Promise<SsoIdentity | null> {
+  const sb = getSupabase();
+  if (!sb) return null;
+  // getUser() asks the server, so app_metadata is current, not a cached copy
+  const { data } = await sb.auth.getUser();
+  const user = data.user;
+  const roles = user?.app_metadata?.onelogin_roles;
+  if (!user?.email || !Array.isArray(roles)) return null;
+  const meta = user.user_metadata ?? {};
+  const profile = (meta.profile ?? {}) as { avatar_url?: string; department?: string };
+  return {
+    email: user.email.toLowerCase(),
+    name: String(meta.name || user.email),
+    avatarUrl: profile.avatar_url ?? null,
+    department: profile.department ?? "",
+    roleKeys: portalRoleKeys(roles),
+  };
+}
 
 interface RecentEntry {
   appId: string;
@@ -31,6 +61,9 @@ interface RecentEntry {
 interface PortalValue extends PortalSnapshot {
   loading: boolean;
   error: string | null;
+  /** last write the database refused (e.g. no permission) — shown as a banner */
+  writeError: string | null;
+  dismissWriteError: () => void;
   backend: string;
   supabaseReady: boolean;
 
@@ -71,6 +104,8 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
   const [data, setData] = useState<PortalSnapshot>(empty);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [writeError, setWriteError] = useState<string | null>(null);
+  const [sso, setSso] = useState<SsoIdentity | null>(null);
   const [sessionEmail, setSessionEmail] = useState<string | null>(null);
   const [favourites, setFavourites] = useState<string[]>([]);
   const [recents, setRecents] = useState<RecentEntry[]>([]);
@@ -82,8 +117,11 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
     let alive = true;
     (async () => {
       try {
-        const snapshot = await loadSnapshot();
-        if (alive) setData(snapshot);
+        const [snapshot, identity] = await Promise.all([loadSnapshot(), loadSsoIdentity().catch(() => null)]);
+        if (alive) {
+          setData(snapshot);
+          setSso(identity);
+        }
       } catch (e) {
         if (alive) setError(e instanceof Error ? e.message : "Unable to load portal data");
       } finally {
@@ -103,10 +141,25 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
-  const currentUser = useMemo(
-    () => data.users.find((u) => u.email.toLowerCase() === sessionEmail?.toLowerCase()) ?? null,
-    [data.users, sessionEmail],
-  );
+  // An SSO user needs no portal_users row — Onelogin vouches for them — but one
+  // may exist (name, department edited by an admin); rights never come from it.
+  const currentUser = useMemo((): PortalUser | null => {
+    const email = sessionEmail?.toLowerCase();
+    if (!email) return null;
+    const row = data.users.find((u) => u.email.toLowerCase() === email) ?? null;
+    if (!sso || sso.email !== email) return row;
+    if (!sso.roleKeys.length) return null;
+    return {
+      id: row?.id ?? `sso:${email}`,
+      name: row?.name ?? sso.name,
+      email: row?.email ?? sso.email,
+      avatarUrl: row?.avatarUrl ?? sso.avatarUrl,
+      roleKey: sso.roleKeys[0],
+      department: row?.department || sso.department,
+      status: "active",
+      lastLogin: row?.lastLogin ?? null,
+    };
+  }, [data.users, sessionEmail, sso]);
 
   /* ── hats ─────────────────────────────────────────────── */
   const sessionUserEmail = currentUser?.email.toLowerCase() ?? null;
@@ -135,9 +188,12 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
   // Rights come from the hat being worn only (plan "แบบ ข") — never the union of
   // every hat, so a request raised in one hat can't be approved from another.
   // Without hats, the person's single portal role applies as before.
+  // SSO users hold every role Onelogin gave them (mapped to portal roles).
   const activeRoleKeys = useMemo(
-    () => activeAssignment?.roles ?? (currentUser ? [currentUser.roleKey] : []),
-    [activeAssignment, currentUser],
+    () =>
+      activeAssignment?.roles ??
+      (!currentUser ? [] : sso?.email === currentUser.email.toLowerCase() ? sso.roleKeys : [currentUser.roleKey]),
+    [activeAssignment, currentUser, sso],
   );
 
   const currentRole = useMemo(() => {
@@ -161,13 +217,24 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
       if (!currentRole) return false;
       if (currentRole.permissions.includes("app.manage")) return true;
       if (!currentRole.permissions.includes("app.launch")) return false;
-      if (!app.roles.length) return true;
+      // empty = everyone on staff; a guest (คนนอก) only opens apps that name "guest"
+      if (!app.roles.length) return activeRoleKeys.some((key) => key !== "guest");
       return app.roles.some((key) => activeRoleKeys.includes(key));
     },
     [currentRole, activeRoleKeys],
   );
 
   /* ── mutations ────────────────────────────────────────── */
+
+  // The UI updates first; if the database refuses (RLS = no permission), say so
+  // and reload the real data so the screen doesn't show a change that never saved.
+  const writeFailed = useCallback((e: unknown) => {
+    console.error("[portal] write refused", e);
+    setWriteError(e instanceof Error ? e.message : String(e));
+    loadSnapshot()
+      .then(setData)
+      .catch(() => {});
+  }, []);
 
   const log = useCallback(
     (action: string, target: string) => {
@@ -180,7 +247,7 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
       };
       setData((prev) => {
         const next = { ...prev, audit: [entry, ...prev.audit].slice(0, 200) };
-        void persist(next, "audit", entry);
+        persist(next, "audit", entry).catch(() => {}); // best effort
         return next;
       });
     },
@@ -206,12 +273,12 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
           ? prev.apps.map((a) => (a.id === app.id ? app : a))
           : [...prev.apps, app];
         const next = { ...prev, apps: apps.sort((a, b) => a.sortOrder - b.sortOrder) };
-        void persist(next, "apps", app);
+        persist(next, "apps", app).catch(writeFailed);
         return next;
       });
       log("app.save", app.name);
     },
-    [log],
+    [log, writeFailed],
   );
 
   const deleteApp = useCallback(
@@ -220,12 +287,12 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
       setData((prev) => {
         name = prev.apps.find((a) => a.id === id)?.name ?? id;
         const next = { ...prev, apps: prev.apps.filter((a) => a.id !== id) };
-        void remove(next, "apps", id);
+        remove(next, "apps", id).catch(writeFailed);
         return next;
       });
       log("app.delete", name);
     },
-    [log],
+    [log, writeFailed],
   );
 
   const saveUser = useCallback(
@@ -236,12 +303,12 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
           ? prev.users.map((u) => (u.id === user.id ? user : u))
           : [...prev.users, user];
         const next = { ...prev, users };
-        void persist(next, "users", user);
+        persist(next, "users", user).catch(writeFailed);
         return next;
       });
       log("user.save", user.email);
     },
-    [log],
+    [log, writeFailed],
   );
 
   const deleteUser = useCallback(
@@ -250,12 +317,12 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
       setData((prev) => {
         email = prev.users.find((u) => u.id === id)?.email ?? id;
         const next = { ...prev, users: prev.users.filter((u) => u.id !== id) };
-        void remove(next, "users", id);
+        remove(next, "users", id).catch(writeFailed);
         return next;
       });
       log("user.delete", email);
     },
-    [log],
+    [log, writeFailed],
   );
 
   const saveRole = useCallback(
@@ -266,12 +333,12 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
           ? prev.roles.map((r) => (r.id === role.id ? role : r))
           : [...prev.roles, role];
         const next = { ...prev, roles };
-        void persist(next, "roles", role);
+        persist(next, "roles", role).catch(writeFailed);
         return next;
       });
       log("role.save", role.key);
     },
-    [log],
+    [log, writeFailed],
   );
 
   const deleteRole = useCallback(
@@ -280,12 +347,12 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
       setData((prev) => {
         key = prev.roles.find((r) => r.id === id)?.key ?? id;
         const next = { ...prev, roles: prev.roles.filter((r) => r.id !== id) };
-        void remove(next, "roles", id);
+        remove(next, "roles", id).catch(writeFailed);
         return next;
       });
       log("role.delete", key);
     },
-    [log],
+    [log, writeFailed],
   );
 
   /* ── session ──────────────────────────────────────────── */
@@ -320,7 +387,7 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
           ...prev,
           users: prev.users.map((u) => (u.id === known.id ? stamped : u)),
         };
-        void persist(next, "users", stamped);
+        persist(next, "users", stamped).catch(() => {}); // only admins may write portal_users
         return next;
       });
       return true;
@@ -332,6 +399,7 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
     await repoSignOut();
     window.localStorage.removeItem("nexus.session");
     setSessionEmail(null);
+    setSso(null);
   }, []);
 
   /* ── personalisation ──────────────────────────────────── */
@@ -386,6 +454,8 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
     ...data,
     loading,
     error,
+    writeError,
+    dismissWriteError: () => setWriteError(null),
     backend: backendName,
     supabaseReady: isSupabaseConfigured,
     currentUser,

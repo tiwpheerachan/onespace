@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { oneloginRoles, portalRoleKeys } from "@/lib/onelogin-roles";
 import { ssoConfig } from "@/lib/sso";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 
@@ -78,6 +79,9 @@ export async function GET(req: NextRequest) {
   // `app` is null while ONE SPACE isn't bound to the permission model yet —
   // only an explicit false means "signed in, but no rights here".
   if (me.app?.has_access === false) return noAccess();
+  // Rights come from Onelogin's app.roles (TODO §2); none we know = no rights.
+  const roles = oneloginRoles(me.app);
+  if (!portalRoleKeys(roles).length) return noAccess();
 
   const sub = me.sub != null ? String(me.sub).trim() : "";
   if (!sub) return fail("nosub");
@@ -160,6 +164,17 @@ export async function GET(req: NextRequest) {
     options: { redirectTo: `${cfg.appUrl}/sso/finish` },
   });
   if (error || !data?.properties?.action_link || data.user?.id !== userId) return fail("link");
+
+  // Roles go in app_metadata — users can edit their own user_metadata from the
+  // browser, but not this — and it rides in the JWT that RLS reads. It must be
+  // saved before the magic link is used, or the session would carry stale rights.
+  const { error: rolesErr } = await admin.auth.admin.updateUserById(userId, {
+    app_metadata: { onelogin_roles: roles },
+  });
+  if (rolesErr) {
+    console.error("[sso] saving roles failed", rolesErr.message);
+    return fail("supabase");
+  }
 
   // Keep a display copy of what Onelogin said, refreshed on every login (§4.4:
   // ONE SPACE never owns this data, so it is overwritten, never edited here).
