@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from "node:crypto";
-import { NextResponse } from "next/server";
+import { NextResponse, type NextRequest } from "next/server";
 import { ssoConfig } from "@/lib/sso";
 
 export const runtime = "nodejs";
@@ -13,7 +13,7 @@ export const dynamic = "force-dynamic";
  *  cookie, only its SHA-256 challenge travels to the authorize URL, and the
  *  callback proves possession by sending the verifier with the code. A leaked
  *  code + client_secret is then useless without the browser that started it. */
-export function GET() {
+export function GET(req: NextRequest) {
   const cfg = ssoConfig();
   if (!cfg) {
     return NextResponse.redirect(
@@ -41,6 +41,9 @@ export function GET() {
     maxAge: 600, // 10 minutes — the code itself lives only 60s
   };
   res.cookies.set("sso_state", state, cookie);
-  res.cookies.set("sso_pkce", verifier, cookie);
+  // `?test=bad_pkce` (test checklist §9 #8): keep a verifier that doesn't match the
+  // challenge, so /verify must answer 400. It can only fail the caller's own login.
+  const badPkce = new URL(req.url).searchParams.get("test") === "bad_pkce";
+  res.cookies.set("sso_pkce", badPkce ? randomBytes(32).toString("base64url") : verifier, cookie);
   return res;
 }
