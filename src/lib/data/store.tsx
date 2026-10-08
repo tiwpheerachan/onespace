@@ -33,6 +33,8 @@ interface SsoIdentity {
   department: string;
   /** portal role keys mapped from Onelogin app.roles */
   roleKeys: string[];
+  /** profile.user_type === "guest" — an outside person (คนนอก) */
+  external: boolean;
   /** Onelogin employment phase; null = unknown → treated as normal */
   phase: "normal" | "clearing" | null;
   clearingUntil: string | null;
@@ -47,13 +49,14 @@ async function loadSsoIdentity(): Promise<SsoIdentity | null> {
   const roles = user?.app_metadata?.onelogin_roles;
   if (!user?.email || !Array.isArray(roles)) return null;
   const meta = user.user_metadata ?? {};
-  const profile = (meta.profile ?? {}) as { avatar_url?: string; department?: string };
+  const profile = (meta.profile ?? {}) as { avatar_url?: string; department?: string; user_type?: string };
   return {
     email: user.email.toLowerCase(),
     name: String(meta.name || user.email),
     avatarUrl: profile.avatar_url ?? null,
     department: profile.department ?? "",
     roleKeys: portalRoleKeys(roles),
+    external: profile.user_type === "guest",
     phase: user.app_metadata.onelogin_phase === "clearing" || user.app_metadata.onelogin_phase === "normal"
       ? user.app_metadata.onelogin_phase
       : null,
@@ -77,6 +80,10 @@ interface PortalValue extends PortalSnapshot {
 
   currentUser: PortalUser | null;
   currentRole: Role | null;
+  /** signed in through Onelogin (shows the link back to its app list) */
+  viaSso: boolean;
+  /** an outside person (Onelogin profile.user_type = guest) — badged so staff can tell */
+  isExternal: boolean;
   /** set while a resigning person is clearing their work — read-only until then */
   clearingUntil: string | null;
   /** The person's hats (ใบสังกัด). Fewer than two = nothing to switch. */
@@ -222,7 +229,8 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
   }, [data.roles, activeRoleKeys]);
 
   // Clearing work before leaving (TODO §4): read-only. RLS enforces the same.
-  const clearing = Boolean(sso && currentUser && sso.email === currentUser.email.toLowerCase() && sso.phase === "clearing");
+  const ssoSelf = Boolean(sso && currentUser && sso.email === currentUser.email.toLowerCase());
+  const clearing = ssoSelf && sso?.phase === "clearing";
   const can = useCallback(
     (permission: Permission) => {
       if (clearing && !READ_ONLY.includes(permission)) return false;
@@ -508,6 +516,8 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
     supabaseReady: isSupabaseConfigured,
     currentUser,
     currentRole,
+    viaSso: ssoSelf,
+    isExternal: ssoSelf && Boolean(sso?.external),
     clearingUntil: clearing ? (sso?.clearingUntil ?? null) : null,
     assignments,
     activeAssignment,

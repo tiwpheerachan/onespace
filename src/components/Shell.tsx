@@ -13,6 +13,7 @@ import {
   KeyRound,
   Layers,
   LayoutGrid,
+  LayoutDashboard,
   Languages,
   LogOut,
   Menu,
@@ -36,6 +37,7 @@ import { Wordmark } from "@/components/Wordmark";
 import { usePortal } from "@/lib/data/store";
 import { LANG_META, LANGS } from "@/lib/i18n/dictionaries";
 import { usePrefs } from "@/lib/i18n/provider";
+import { oneloginDashboardUrl } from "@/lib/sso";
 import { cn } from "@/lib/utils";
 
 function Brand({ compact = false }: { compact?: boolean }) {
@@ -213,9 +215,19 @@ function ThemeToggle() {
   );
 }
 
+/** "คนนอก" — so staff can see at a glance they're dealing with an outside person (TODO §5). */
+function ExternalBadge() {
+  const { t } = usePrefs();
+  return (
+    <span className="rounded-full bg-amber-100 px-1.5 py-px text-[10.5px] font-semibold text-amber-800 dark:bg-amber-500/15 dark:text-amber-300">
+      {t.common.external}
+    </span>
+  );
+}
+
 function UserMenu() {
   const { t } = usePrefs();
-  const { currentUser, currentRole, signOut } = usePortal();
+  const { currentUser, currentRole, signOut, viaSso, isExternal } = usePortal();
   const router = useRouter();
   const [open, setOpen] = useState(false);
 
@@ -240,7 +252,10 @@ function UserMenu() {
           color={currentRole?.color ?? "#1f43e6"}
         />
         <span className="hidden text-left leading-tight md:block">
-          <span className="block text-[12.5px] font-semibold text-ink">{currentUser.name}</span>
+          <span className="flex items-center gap-1.5 text-[12.5px] font-semibold text-ink">
+            {currentUser.name}
+            {isExternal && <ExternalBadge />}
+          </span>
           <span className="block text-[11px] text-ink-mute">{currentRole?.name}</span>
         </span>
         <ChevronDown className="hidden h-3.5 w-3.5 text-ink-mute md:block" />
@@ -255,7 +270,10 @@ function UserMenu() {
             className="absolute right-0 z-50 mt-2 w-60 overflow-hidden rounded-xl border border-line bg-surface p-1 shadow-lift"
           >
             <div className="border-b border-line px-3 py-3">
-              <p className="text-[13px] font-semibold text-ink">{currentUser.name}</p>
+              <p className="flex items-center gap-1.5 text-[13px] font-semibold text-ink">
+                {currentUser.name}
+                {isExternal && <ExternalBadge />}
+              </p>
               <p className="truncate text-[11.5px] text-ink-mute">{currentUser.email}</p>
               <p className="mt-1.5 inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold"
                  style={{ background: `${currentRole?.color}1a`, color: currentRole?.color }}>
@@ -270,6 +288,16 @@ function UserMenu() {
               <Settings className="h-4 w-4" />
               {t.common.settings}
             </Link>
+            {viaSso && (
+              <a
+                href={oneloginDashboardUrl}
+                onClick={() => setOpen(false)}
+                className="flex items-center gap-2.5 rounded-lg px-3 py-2.5 text-[13px] text-ink-soft transition hover:bg-canvas hover:text-ink"
+              >
+                <LayoutDashboard className="h-4 w-4" />
+                {t.common.oneloginApps}
+              </a>
+            )}
             <button
               onClick={async () => {
                 await signOut();

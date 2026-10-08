@@ -25,5 +25,8 @@ export function ssoConfig(): SsoConfig | null {
   return { clientId, clientSecret, baseUrl, appUrl, redirectUri: `${appUrl}/sso/callback` };
 }
 
+/** Onelogin's page listing every app the person can open (TODO §6). */
+export const oneloginDashboardUrl = `${(process.env.NEXT_PUBLIC_SSO_BASE_URL || "https://sso.shd-technology.co.th").replace(/\/$/, "")}/dashboard`;
+
 /** Public flag used by the client only to decide whether to show the SSO button. */
 export const ssoEnabledPublic = process.env.NEXT_PUBLIC_SSO_ENABLED === "1";
