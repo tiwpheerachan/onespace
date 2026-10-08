@@ -280,6 +280,49 @@ export async function signIn(email: string, password: string): Promise<{ email: 
   return { email: data.user.email };
 }
 
+/* ─────────────── second factor for password sign-in (TOTP) ──────────────── */
+
+// Onelogin's ask (8 Oct): the emergency admin's password sign-in needs MFA.
+// RLS only grants a password session rights at aal2 (supabase/password_mfa.sql).
+
+/** What a fresh password session still needs: nothing, a code, or setting up an app. */
+export async function mfaNeeded(): Promise<"none" | "verify" | "enroll"> {
+  const sb = getSupabase();
+  if (!sb) return "none";
+  const { data, error } = await sb.auth.mfa.getAuthenticatorAssuranceLevel();
+  if (error || !data) return "enroll";
+  if (data.currentLevel === "aal2") return "none";
+  return data.nextLevel === "aal2" ? "verify" : "enroll";
+}
+
+/** Start setting up an authenticator app: the QR code and the secret behind it. */
+export async function mfaEnroll(): Promise<{ factorId: string; qr: string; secret: string } | null> {
+  const sb = getSupabase();
+  if (!sb) return null;
+  // half-finished set-ups from an earlier attempt would pile up — drop them
+  const { data: listed } = await sb.auth.mfa.listFactors();
+  for (const f of listed?.all ?? []) {
+    if (f.factor_type === "totp" && f.status !== "verified") await sb.auth.mfa.unenroll({ factorId: f.id });
+  }
+  const { data, error } = await sb.auth.mfa.enroll({ factorType: "totp", issuer: "ONE SPACE", friendlyName: "ONE SPACE" });
+  if (error || !data) return null;
+  return { factorId: data.id, qr: data.totp.qr_code, secret: data.totp.secret };
+}
+
+/** Check a 6-digit code; on success the session is raised to aal2. */
+export async function mfaVerify(code: string, factorId?: string): Promise<boolean> {
+  const sb = getSupabase();
+  if (!sb) return false;
+  let id = factorId;
+  if (!id) {
+    const { data } = await sb.auth.mfa.listFactors();
+    id = data?.totp.find((f) => f.status === "verified")?.id;
+  }
+  if (!id) return false;
+  const { error } = await sb.auth.mfa.challengeAndVerify({ factorId: id, code: code.trim() });
+  return !error;
+}
+
 export async function signOut() {
   const sb = getSupabase();
   if (sb) await sb.auth.signOut();

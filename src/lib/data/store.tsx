@@ -11,6 +11,7 @@ import {
 import {
   backendName,
   loadSnapshot,
+  mfaNeeded,
   persist,
   remove,
   resetLocal,
@@ -64,6 +65,10 @@ async function loadSsoIdentity(): Promise<SsoIdentity | null> {
   };
 }
 
+/** true = signed in · false = wrong email/password or unknown/suspended person ·
+ *  "verify" / "enroll" = password accepted, the second factor comes next */
+export type SignInResult = boolean | "verify" | "enroll";
+
 interface RecentEntry {
   appId: string;
   at: string;
@@ -95,7 +100,9 @@ interface PortalValue extends PortalSnapshot {
 
   /** Re-read rights after Onelogin changed them (session check said "changed"). */
   reloadRights: () => Promise<void>;
-  signIn: (email: string, password: string) => Promise<boolean>;
+  signIn: (email: string, password: string) => Promise<SignInResult>;
+  /** after the second factor was accepted */
+  finishSignIn: (email: string) => Promise<boolean>;
   signOut: () => Promise<void>;
 
   favourites: string[];
@@ -413,11 +420,8 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
 
   /* ── session ──────────────────────────────────────────── */
 
-  const signIn = useCallback(
-    async (email: string, password: string) => {
-      const result = await repoSignIn(email, password);
-      if (!result) return false;
-
+  const finishSignIn = useCallback(
+    async (email: string) => {
       // With Supabase + row level security the catalogue is only readable once
       // authenticated, so the anonymous boot snapshot is empty. Now that we hold
       // a session, reload it before looking the signed-in user up.
@@ -431,9 +435,7 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
         }
       }
 
-      const known = snapshot.users.find(
-        (u) => u.email.toLowerCase() === result.email.toLowerCase(),
-      );
+      const known = snapshot.users.find((u) => u.email.toLowerCase() === email.toLowerCase());
       if (!known || known.status === "suspended") return false;
       window.localStorage.setItem("nexus.session", known.email);
       setSessionEmail(known.email);
@@ -449,6 +451,18 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
       return true;
     },
     [data],
+  );
+
+  const signIn = useCallback(
+    async (email: string, password: string): Promise<SignInResult> => {
+      const result = await repoSignIn(email, password);
+      if (!result) return false;
+      // a password session must pass a second factor before it counts
+      const step = await mfaNeeded();
+      if (step !== "none") return step;
+      return finishSignIn(result.email);
+    },
+    [finishSignIn],
   );
 
   const signOut = useCallback(async () => {
@@ -526,6 +540,7 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
     canOpen,
     reloadRights,
     signIn,
+    finishSignIn,
     signOut,
     favourites,
     toggleFavourite,

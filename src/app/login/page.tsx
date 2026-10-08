@@ -19,6 +19,7 @@ import { AppLogo } from "@/components/AppLogo";
 import { Wordmark } from "@/components/Wordmark";
 import { BlackHoleHeroSection } from "@/components/ui/blackhole-hero-section";
 import { BlurFade } from "@/components/ui/blur-fade";
+import { MfaStep } from "@/components/MfaStep";
 import { usePortal } from "@/lib/data/store";
 import { LANG_META, LANGS } from "@/lib/i18n/dictionaries";
 import { usePrefs } from "@/lib/i18n/provider";
@@ -27,7 +28,7 @@ import { cn } from "@/lib/utils";
 
 export default function LoginPage() {
   const { t, lang, setLang } = usePrefs();
-  const { signIn, currentUser, loading, apps, users, supabaseReady } = usePortal();
+  const { signIn, signOut, currentUser, loading, apps, users, supabaseReady } = usePortal();
   const router = useRouter();
 
   // With Onelogin on, everyone signs in there; the password form is only for
@@ -40,6 +41,7 @@ export default function LoginPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(false);
   const [ssoErr, setSsoErr] = useState<string | null>(null);
+  const [mfa, setMfa] = useState<"verify" | "enroll" | null>(null);
 
   useEffect(() => {
     if (!loading && currentUser) router.replace("/dashboard");
@@ -54,11 +56,14 @@ export default function LoginPage() {
     e.preventDefault();
     setBusy(true);
     setError(false);
-    const ok = await signIn(email, password);
-    if (ok) {
+    const result = await signIn(email, password);
+    if (result === true) {
       router.push("/dashboard");
-    } else {
+    } else if (result === false) {
       setError(true);
+      setBusy(false);
+    } else {
+      setMfa(result); // password accepted — the second factor comes next
       setBusy(false);
     }
   };
@@ -186,7 +191,20 @@ export default function LoginPage() {
             <h2 className="text-[22px] font-semibold tracking-tight text-white">{t.login.title}</h2>
             <p className="mt-1.5 text-[13.5px] leading-relaxed text-white/55">{t.login.subtitle}</p>
 
-            {ssoEnabledPublic && (
+            {mfa && (
+              <MfaStep
+                mode={mfa}
+                email={email}
+                onDone={() => router.push("/dashboard")}
+                onCancel={async () => {
+                  await signOut();
+                  setMfa(null);
+                  setPassword("");
+                }}
+              />
+            )}
+
+            {ssoEnabledPublic && !mfa && (
               <>
                 <a
                   href="/sso/login"
@@ -218,7 +236,7 @@ export default function LoginPage() {
               </>
             )}
 
-            {(!passwordFolded || showPassword) && (
+            {!mfa && (!passwordFolded || showPassword) && (
               <form onSubmit={submit} className="mt-7 space-y-4">
                 <div>
                   <span className="mb-1.5 block text-[12.5px] font-medium text-white/70">{t.login.email}</span>
