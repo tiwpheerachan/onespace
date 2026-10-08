@@ -169,7 +169,8 @@ export async function GET(req: NextRequest) {
   // browser, but not this — and it rides in the JWT that RLS reads. It must be
   // saved before the magic link is used, or the session would carry stale rights.
   const { error: rolesErr } = await admin.auth.admin.updateUserById(userId, {
-    app_metadata: { onelogin_roles: roles },
+    // name here too: the audit trail stamps it as the actor (supabase/audit_actor.sql)
+    app_metadata: { onelogin_roles: roles, name: me.name ?? email },
   });
   if (rolesErr) {
     console.error("[sso] saving roles failed", rolesErr.message);

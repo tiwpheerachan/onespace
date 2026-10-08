@@ -8,11 +8,11 @@ import { usePortal } from "@/lib/data/store";
 import { useSsoSessionWatch } from "@/lib/sso-session";
 
 export default function PortalLayout({ children }: { children: React.ReactNode }) {
-  const { loading, currentUser, signOut, supabaseReady } = usePortal();
+  const { loading, currentUser, signOut, reloadRights, supabaseReady } = usePortal();
   const router = useRouter();
 
   // E5 — follow the central session; non-SSO sessions answer "skip".
-  useSsoSessionWatch(signOut, supabaseReady && Boolean(currentUser));
+  useSsoSessionWatch(signOut, reloadRights, supabaseReady && Boolean(currentUser));
 
   useEffect(() => {
     if (!loading && !currentUser) router.replace("/login");

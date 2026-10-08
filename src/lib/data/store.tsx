@@ -20,6 +20,7 @@ import {
 } from "@/lib/data/repository";
 import { loadAssignments, pickDefaultAssignment } from "@/lib/assignments";
 import { portalRoleKeys } from "@/lib/onelogin-roles";
+import { checkSsoSession } from "@/lib/sso-session";
 import { getSupabase, isSupabaseConfigured } from "@/lib/supabase/client";
 import type { Assignment, AuditEntry, Permission, PortalApp, PortalUser, Role } from "@/lib/types";
 import { uid } from "@/lib/utils";
@@ -76,6 +77,8 @@ interface PortalValue extends PortalSnapshot {
   can: (permission: Permission) => boolean;
   canOpen: (app: PortalApp) => boolean;
 
+  /** Re-read rights after Onelogin changed them (session check said "changed"). */
+  reloadRights: () => Promise<void>;
   signIn: (email: string, password: string) => Promise<boolean>;
   signOut: () => Promise<void>;
 
@@ -226,6 +229,29 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
 
   /* ── mutations ────────────────────────────────────────── */
 
+  const reloadRights = useCallback(async () => {
+    const [identity, snapshot] = await Promise.all([
+      loadSsoIdentity().catch(() => null),
+      loadSnapshot().catch(() => null),
+    ]);
+    setSso(identity);
+    if (snapshot) setData(snapshot);
+  }, []);
+
+  // Changing apps, people or roles is risky (TODO §3): ask Onelogin live first
+  // instead of trusting rights that may be up to a minute old.
+  const liveCheck = useCallback(async () => {
+    const status = await checkSsoSession();
+    if (status === "inactive" || status === "noaccess") {
+      await repoSignOut();
+      window.localStorage.removeItem("nexus.session");
+      window.location.replace(status === "inactive" ? "/login?sso=ended" : "/no-access");
+      return false;
+    }
+    if (status === "changed") await reloadRights();
+    return true;
+  }, [reloadRights]);
+
   // The UI updates first; if the database refuses (RLS = no permission), say so
   // and reload the real data so the screen doesn't show a change that never saved.
   const writeFailed = useCallback((e: unknown) => {
@@ -267,6 +293,7 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
 
   const saveApp = useCallback(
     async (app: PortalApp) => {
+      if (!(await liveCheck())) return;
       setData((prev) => {
         const exists = prev.apps.some((a) => a.id === app.id);
         const apps = exists
@@ -278,11 +305,12 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
       });
       log("app.save", app.name);
     },
-    [log, writeFailed],
+    [log, writeFailed, liveCheck],
   );
 
   const deleteApp = useCallback(
     async (id: string) => {
+      if (!(await liveCheck())) return;
       let name = id;
       setData((prev) => {
         name = prev.apps.find((a) => a.id === id)?.name ?? id;
@@ -292,11 +320,12 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
       });
       log("app.delete", name);
     },
-    [log, writeFailed],
+    [log, writeFailed, liveCheck],
   );
 
   const saveUser = useCallback(
     async (user: PortalUser) => {
+      if (!(await liveCheck())) return;
       setData((prev) => {
         const exists = prev.users.some((u) => u.id === user.id);
         const users = exists
@@ -308,11 +337,12 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
       });
       log("user.save", user.email);
     },
-    [log, writeFailed],
+    [log, writeFailed, liveCheck],
   );
 
   const deleteUser = useCallback(
     async (id: string) => {
+      if (!(await liveCheck())) return;
       let email = id;
       setData((prev) => {
         email = prev.users.find((u) => u.id === id)?.email ?? id;
@@ -322,11 +352,12 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
       });
       log("user.delete", email);
     },
-    [log, writeFailed],
+    [log, writeFailed, liveCheck],
   );
 
   const saveRole = useCallback(
     async (role: Role) => {
+      if (!(await liveCheck())) return;
       setData((prev) => {
         const exists = prev.roles.some((r) => r.id === role.id);
         const roles = exists
@@ -338,11 +369,12 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
       });
       log("role.save", role.key);
     },
-    [log, writeFailed],
+    [log, writeFailed, liveCheck],
   );
 
   const deleteRole = useCallback(
     async (id: string) => {
+      if (!(await liveCheck())) return;
       let key = id;
       setData((prev) => {
         key = prev.roles.find((r) => r.id === id)?.key ?? id;
@@ -352,7 +384,7 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
       });
       log("role.delete", key);
     },
-    [log, writeFailed],
+    [log, writeFailed, liveCheck],
   );
 
   /* ── session ──────────────────────────────────────────── */
@@ -465,6 +497,7 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
     switchAssignment,
     can,
     canOpen,
+    reloadRights,
     signIn,
     signOut,
     favourites,

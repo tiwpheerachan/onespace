@@ -24,7 +24,10 @@ export async function checkSsoSession(): Promise<SessionStatus> {
       cache: "no-store",
     });
     if (!r.ok) return "unknown";
-    return ((await r.json()) as { status: SessionStatus }).status;
+    const { status } = (await r.json()) as { status: SessionStatus };
+    // the new rights ride in the access token that RLS reads — get a fresh one
+    if (status === "changed") await sb.auth.refreshSession();
+    return status;
   } catch {
     return "unknown";
   }
@@ -33,9 +36,14 @@ export async function checkSsoSession(): Promise<SessionStatus> {
 /**
  * Polls the session check about once a minute while the tab is visible (and
  * right away when it becomes visible again). A closed account is signed out;
- * lost rights land on /no-access. "unknown" never signs anyone out.
+ * lost rights land on /no-access; changed rights take effect without a reload.
+ * "unknown" never signs anyone out.
  */
-export function useSsoSessionWatch(signOut: () => Promise<void>, enabled: boolean) {
+export function useSsoSessionWatch(
+  signOut: () => Promise<void>,
+  reloadRights: () => Promise<void>,
+  enabled: boolean,
+) {
   useEffect(() => {
     if (!enabled) return;
     let stopped = false;
@@ -48,6 +56,8 @@ export function useSsoSessionWatch(signOut: () => Promise<void>, enabled: boolea
         stopped = true;
         await signOut();
         window.location.replace(status === "inactive" ? "/login?sso=ended" : "/no-access");
+      } else if (status === "changed") {
+        await reloadRights();
       }
     };
 
@@ -59,5 +69,5 @@ export function useSsoSessionWatch(signOut: () => Promise<void>, enabled: boolea
       window.clearInterval(timer);
       document.removeEventListener("visibilitychange", run);
     };
-  }, [enabled, signOut]);
+  }, [enabled, signOut, reloadRights]);
 }
