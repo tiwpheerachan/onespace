@@ -336,7 +336,7 @@ export default function DashboardPage() {
                     <div className="flex items-center gap-2">
                       <p className="truncate text-[13.5px] font-semibold text-ink">{app.name}</p>
                       {!allowed && <Lock className="h-3.5 w-3.5 shrink-0 text-ink-mute" />}
-                      <Badge tone={app.status}>{t.status[app.status]}</Badge>
+                      {allowed && <Badge tone={app.status}>{t.status[app.status]}</Badge>}
                     </div>
                     <p className="truncate text-[12px] text-ink-mute">{app.description}</p>
                   </div>

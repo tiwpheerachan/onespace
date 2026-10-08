@@ -96,12 +96,13 @@ export function AppTile({ app, allowed, pinned, onPin, onLaunch, onDetails, inde
 
         {/* top controls */}
         <div className="absolute inset-x-0 top-0 flex items-start justify-between p-3">
-          <Badge tone={app.status}>{t.status[app.status]}</Badge>
+          {/* system status only matters to someone who can open it — a green "operational" beside "no access" reads as a contradiction */}
+          {allowed && <Badge tone={app.status}>{t.status[app.status]}</Badge>}
           <button
             onClick={stop(onPin)}
             title={pinned ? t.dash.unpin : t.dash.pin}
             className={cn(
-              "rounded-lg p-1.5 backdrop-blur-sm transition",
+              "ml-auto rounded-lg p-1.5 backdrop-blur-sm transition",
               pinned
                 ? "bg-white/90 text-brand-600"
                 : "bg-black/15 text-white/90 opacity-0 hover:bg-white/90 hover:text-ink group-hover:opacity-100",
