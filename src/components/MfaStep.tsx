@@ -27,7 +27,7 @@ export function MfaStep({
   const [setup, setSetup] = useState<{ factorId: string; qr: string; secret: string } | null>(null);
   const [code, setCode] = useState("");
   const [busy, setBusy] = useState(false);
-  const [wrong, setWrong] = useState(false);
+  const [wrong, setWrong] = useState<string | null>(null);
 
   useEffect(() => {
     if (mode !== "enroll") return;
@@ -35,7 +35,7 @@ export function MfaStep({
     mfaEnroll().then((s) => {
       if (!alive) return;
       if (s) setSetup(s);
-      else setWrong(true);
+      else setWrong("enroll failed");
     });
     return () => {
       alive = false;
@@ -45,10 +45,11 @@ export function MfaStep({
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setBusy(true);
-    setWrong(false);
-    const ok = (await mfaVerify(code, setup?.factorId)) && (await finishSignIn(email));
-    if (ok) return onDone();
-    setWrong(true);
+    setWrong(null);
+    // say which half failed: the code itself, or finding the portal account after it
+    const why = (await mfaVerify(code, setup?.factorId)) ?? ((await finishSignIn(email)) ? null : "no active portal user");
+    if (!why) return onDone();
+    setWrong(why);
     setBusy(false);
   };
 
@@ -95,6 +96,7 @@ export function MfaStep({
       {wrong && (
         <p className="rounded-xl border border-rose-400/30 bg-rose-500/15 px-3.5 py-2.5 text-[12.5px] font-medium text-rose-200">
           {t.login.mfaWrong}
+          <span className="mt-1 block font-mono text-[11px] text-rose-200/70">{wrong}</span>
         </p>
       )}
 

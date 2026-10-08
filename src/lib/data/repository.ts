@@ -309,18 +309,18 @@ export async function mfaEnroll(): Promise<{ factorId: string; qr: string; secre
   return { factorId: data.id, qr: data.totp.qr_code, secret: data.totp.secret };
 }
 
-/** Check a 6-digit code; on success the session is raised to aal2. */
-export async function mfaVerify(code: string, factorId?: string): Promise<boolean> {
+/** Check a 6-digit code; on success the session is raised to aal2. Returns null or why it failed. */
+export async function mfaVerify(code: string, factorId?: string): Promise<string | null> {
   const sb = getSupabase();
-  if (!sb) return false;
+  if (!sb) return "no backend";
   let id = factorId;
   if (!id) {
     const { data } = await sb.auth.mfa.listFactors();
     id = data?.totp.find((f) => f.status === "verified")?.id;
   }
-  if (!id) return false;
+  if (!id) return "no authenticator set up";
   const { error } = await sb.auth.mfa.challengeAndVerify({ factorId: id, code: code.trim() });
-  return !error;
+  return error ? error.message : null;
 }
 
 export async function signOut() {
