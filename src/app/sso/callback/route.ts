@@ -74,6 +74,9 @@ export async function GET(req: NextRequest) {
       // 403 = no access (enforcement on + no role in app)
       return r.status === 403 ? noAccess() : fail(`verify_${r.status}`);
     }
+    // length only, never the value: a real verifier is 43 chars — anything else
+    // that /verify still accepted means PKCE isn't being enforced for this code
+    console.info("[sso] verify ok", { verifierLen: verifier?.length ?? 0 });
     me = await r.json();
   } catch (e) {
     console.error("[sso] verify error", e);
