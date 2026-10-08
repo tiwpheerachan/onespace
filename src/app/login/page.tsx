@@ -30,7 +30,11 @@ export default function LoginPage() {
   const { signIn, currentUser, loading, apps, users, supabaseReady } = usePortal();
   const router = useRouter();
 
-  const [email, setEmail] = useState("admin@shd-technology.co.th");
+  // With Onelogin on, everyone signs in there; the password form is only for
+  // the emergency admin account (for when Onelogin is down) and stays folded.
+  const passwordFolded = ssoEnabledPublic && supabaseReady;
+  const [showPassword, setShowPassword] = useState(false);
+  const [email, setEmail] = useState(passwordFolded ? "" : "admin@shd-technology.co.th");
   const [password, setPassword] = useState("");
   const [show, setShow] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -196,100 +200,112 @@ export default function LoginPage() {
                     {ssoErr === "ended" ? t.login.ssoEnded : ssoErr === "link_taken" ? t.login.ssoLinkTaken : t.login.ssoError}
                   </p>
                 )}
-                <div className="mt-6 flex items-center gap-3 text-[11px] font-medium uppercase tracking-wider text-white/40">
-                  <span className="h-px flex-1 bg-white/15" />
-                  {t.login.ssoDivider}
-                  <span className="h-px flex-1 bg-white/15" />
-                </div>
+                {passwordFolded && !showPassword ? (
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(true)}
+                    className="mt-6 block w-full text-center text-[12px] text-white/40 transition hover:text-white/70 hover:underline"
+                  >
+                    {t.login.emergency}
+                  </button>
+                ) : (
+                  <div className="mt-6 flex items-center gap-3 text-[11px] font-medium uppercase tracking-wider text-white/40">
+                    <span className="h-px flex-1 bg-white/15" />
+                    {passwordFolded ? t.login.emergency : t.login.ssoDivider}
+                    <span className="h-px flex-1 bg-white/15" />
+                  </div>
+                )}
               </>
             )}
 
-            <form onSubmit={submit} className="mt-7 space-y-4">
-              <div>
-                <span className="mb-1.5 block text-[12.5px] font-medium text-white/70">{t.login.email}</span>
-                <div className="relative">
-                  <Mail className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-white/40" />
-                  <input
-                    type="email"
-                    required
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    className="h-11 w-full rounded-xl border border-white/15 bg-white/5 pl-10 pr-3.5 text-sm text-white outline-none transition placeholder:text-white/35 focus:border-white/40 focus:bg-white/10 focus:ring-4 focus:ring-white/10"
-                    placeholder="name@company.co.th"
-                    autoComplete="email"
-                  />
+            {(!passwordFolded || showPassword) && (
+              <form onSubmit={submit} className="mt-7 space-y-4">
+                <div>
+                  <span className="mb-1.5 block text-[12.5px] font-medium text-white/70">{t.login.email}</span>
+                  <div className="relative">
+                    <Mail className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-white/40" />
+                    <input
+                      type="email"
+                      required
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      className="h-11 w-full rounded-xl border border-white/15 bg-white/5 pl-10 pr-3.5 text-sm text-white outline-none transition placeholder:text-white/35 focus:border-white/40 focus:bg-white/10 focus:ring-4 focus:ring-white/10"
+                      placeholder="name@company.co.th"
+                      autoComplete="email"
+                    />
+                  </div>
                 </div>
-              </div>
 
-              <div>
-                <span className="mb-1.5 block text-[12.5px] font-medium text-white/70">{t.login.password}</span>
-                <div className="relative">
-                  <KeyRound className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-white/40" />
-                  <input
-                    type={show ? "text" : "password"}
-                    required
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    className="h-11 w-full rounded-xl border border-white/15 bg-white/5 pl-10 pr-10 text-sm text-white outline-none transition placeholder:text-white/35 focus:border-white/40 focus:bg-white/10 focus:ring-4 focus:ring-white/10"
-                    placeholder="••••••••"
-                    autoComplete="current-password"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShow((v) => !v)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-white/40 transition hover:text-white"
-                  >
-                    {show ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                <div>
+                  <span className="mb-1.5 block text-[12.5px] font-medium text-white/70">{t.login.password}</span>
+                  <div className="relative">
+                    <KeyRound className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-white/40" />
+                    <input
+                      type={show ? "text" : "password"}
+                      required
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      className="h-11 w-full rounded-xl border border-white/15 bg-white/5 pl-10 pr-10 text-sm text-white outline-none transition placeholder:text-white/35 focus:border-white/40 focus:bg-white/10 focus:ring-4 focus:ring-white/10"
+                      placeholder="••••••••"
+                      autoComplete="current-password"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShow((v) => !v)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-white/40 transition hover:text-white"
+                    >
+                      {show ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between pt-1">
+                  <label className="flex cursor-pointer items-center gap-2 text-[12.5px] text-white/60">
+                    <input type="checkbox" defaultChecked className="h-3.5 w-3.5 rounded border-white/30 bg-transparent accent-white" />
+                    {t.login.remember}
+                  </label>
+                  <button type="button" className="text-[12.5px] font-semibold text-white/80 hover:text-white hover:underline">
+                    {t.login.forgot}
                   </button>
                 </div>
-              </div>
 
-              <div className="flex items-center justify-between pt-1">
-                <label className="flex cursor-pointer items-center gap-2 text-[12.5px] text-white/60">
-                  <input type="checkbox" defaultChecked className="h-3.5 w-3.5 rounded border-white/30 bg-transparent accent-white" />
-                  {t.login.remember}
-                </label>
-                <button type="button" className="text-[12.5px] font-semibold text-white/80 hover:text-white hover:underline">
-                  {t.login.forgot}
+                <AnimatePresence>
+                  {error && (
+                    <motion.p
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: "auto" }}
+                      exit={{ opacity: 0, height: 0 }}
+                      className="rounded-xl border border-rose-400/30 bg-rose-500/15 px-3.5 py-2.5 text-[12.5px] font-medium text-rose-200"
+                    >
+                      {t.login.error}
+                    </motion.p>
+                  )}
+                </AnimatePresence>
+
+                <button
+                  type="submit"
+                  disabled={busy}
+                  className={cn(
+                    "group inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-60",
+                    ssoEnabledPublic
+                      ? "border border-white/20 text-white hover:bg-white/10"
+                      : "bg-white text-black hover:bg-white/90",
+                  )}
+                >
+                  {busy ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      {t.login.signingIn}
+                    </>
+                  ) : (
+                    <>
+                      {t.login.signIn}
+                      <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
+                    </>
+                  )}
                 </button>
-              </div>
-
-              <AnimatePresence>
-                {error && (
-                  <motion.p
-                    initial={{ opacity: 0, height: 0 }}
-                    animate={{ opacity: 1, height: "auto" }}
-                    exit={{ opacity: 0, height: 0 }}
-                    className="rounded-xl border border-rose-400/30 bg-rose-500/15 px-3.5 py-2.5 text-[12.5px] font-medium text-rose-200"
-                  >
-                    {t.login.error}
-                  </motion.p>
-                )}
-              </AnimatePresence>
-
-              <button
-                type="submit"
-                disabled={busy}
-                className={cn(
-                  "group inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-60",
-                  ssoEnabledPublic
-                    ? "border border-white/20 text-white hover:bg-white/10"
-                    : "bg-white text-black hover:bg-white/90",
-                )}
-              >
-                {busy ? (
-                  <>
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    {t.login.signingIn}
-                  </>
-                ) : (
-                  <>
-                    {t.login.signIn}
-                    <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
-                  </>
-                )}
-              </button>
-            </form>
+              </form>
+            )}
 
             {!supabaseReady && (
               <div className="mt-7 rounded-2xl border border-white/10 bg-white/5 p-4">
