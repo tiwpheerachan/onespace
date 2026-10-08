@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { EMPLOYMENT_REFRESH_MS, effectiveRights, employmentMeta } from "@/lib/onelogin-effective";
 import { oneloginRoles, portalRoleKeys } from "@/lib/onelogin-roles";
 import { ssoConfig } from "@/lib/sso";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
@@ -68,55 +69,40 @@ export async function POST(req: NextRequest) {
   if (central.grants_version === "no-access") return reply("noaccess");
 
   // Rights changed centrally → reload them from /authz/effective and overwrite
-  // what we hold (TODO §3). Until that succeeds the old version stays saved, so
-  // the next round tries again.
+  // what we hold (TODO §3). Employment isn't covered by grants_version, so it is
+  // re-read every few hours too (TODO §4). Until a reload succeeds nothing is
+  // saved, so the next round tries again.
   const held = (meta.app as { grants_version?: string } | null)?.grants_version;
-  if (central.grants_version && central.grants_version !== held) {
-    const fresh = await effectiveRights(cfg.baseUrl, sub);
-    if (!fresh) return reply("active");
-    const roles = oneloginRoles(fresh);
-    if (fresh.hasAccess === false || fresh.has_access === false || !portalRoleKeys(roles).length) {
-      return reply("noaccess");
-    }
-    const { error } = await admin.auth.admin.updateUserById(auth.user.id, {
-      app_metadata: { ...(auth.user.app_metadata ?? {}), onelogin_roles: roles },
-      user_metadata: {
-        ...meta,
-        app: { ...(meta.app ?? {}), roles, grants_version: central.grants_version },
-      },
-    });
-    if (error) {
-      console.error("[sso] saving reloaded rights failed", error.message);
-      return reply("active");
-    }
-    return reply("changed");
-  }
-  return reply("active");
-}
+  const grantsChanged = Boolean(central.grants_version && central.grants_version !== held);
+  const am = auth.user.app_metadata ?? {};
+  const checkedAt = Date.parse(String(am.onelogin_checked_at ?? ""));
+  const employmentStale = !(checkedAt > Date.now() - EMPLOYMENT_REFRESH_MS);
+  if (!grantsChanged && !employmentStale) return reply("active");
+  // a session from before roles lived in app_metadata — leave it to the next login
+  if (!grantsChanged && !Array.isArray(am.onelogin_roles)) return reply("active");
 
-type Effective = { hasAccess?: boolean; has_access?: boolean; roles?: unknown };
+  const fresh = await effectiveRights(cfg.baseUrl, sub);
+  if (!fresh) return reply("active");
+  // only a grants change replaces the roles; an employment refresh keeps them
+  const roles = grantsChanged ? oneloginRoles(fresh) : oneloginRoles({ roles: am.onelogin_roles });
+  if (grantsChanged && (fresh.hasAccess === false || fresh.has_access === false || !portalRoleKeys(roles).length)) {
+    return reply("noaccess");
+  }
+  const employment = employmentMeta(fresh.employment);
+  if (employment.onelogin_phase === "ended") return reply("noaccess");
 
-/** POST /api/v1/authz/effective for one user (by `sub`), or null if it can't be had. */
-async function effectiveRights(baseUrl: string, sub: string): Promise<Effective | null> {
-  const key = process.env.CENTRAL_API_KEY;
-  if (!key) {
-    console.error("[sso] CENTRAL_API_KEY missing — can't reload rights");
-    return null;
+  const { error } = await admin.auth.admin.updateUserById(auth.user.id, {
+    app_metadata: { ...am, onelogin_roles: roles, ...employment },
+    ...(grantsChanged && {
+      user_metadata: { ...meta, app: { ...(meta.app ?? {}), roles, grants_version: central.grants_version } },
+    }),
+  });
+  if (error) {
+    console.error("[sso] saving reloaded rights failed", error.message);
+    return reply("active");
   }
-  try {
-    const r = await fetch(`${baseUrl}/api/v1/authz/effective`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ user: sub }),
-      signal: AbortSignal.timeout(8000),
-    });
-    if (!r.ok) {
-      console.error("[sso] authz/effective failed", r.status, (await r.text().catch(() => "")).slice(0, 300));
-      return null;
-    }
-    return (await r.json()) as Effective;
-  } catch (e) {
-    console.error("[sso] authz/effective error", e);
-    return null;
-  }
+  const phaseChanged =
+    (am.onelogin_phase ?? null) !== employment.onelogin_phase ||
+    (am.onelogin_clearing_until ?? null) !== employment.onelogin_clearing_until;
+  return reply(grantsChanged || phaseChanged ? "changed" : "active");
 }

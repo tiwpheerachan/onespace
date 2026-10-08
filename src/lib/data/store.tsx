@@ -33,6 +33,9 @@ interface SsoIdentity {
   department: string;
   /** portal role keys mapped from Onelogin app.roles */
   roleKeys: string[];
+  /** Onelogin employment phase; null = unknown → treated as normal */
+  phase: "normal" | "clearing" | null;
+  clearingUntil: string | null;
 }
 
 async function loadSsoIdentity(): Promise<SsoIdentity | null> {
@@ -51,6 +54,10 @@ async function loadSsoIdentity(): Promise<SsoIdentity | null> {
     avatarUrl: profile.avatar_url ?? null,
     department: profile.department ?? "",
     roleKeys: portalRoleKeys(roles),
+    phase: user.app_metadata.onelogin_phase === "clearing" || user.app_metadata.onelogin_phase === "normal"
+      ? user.app_metadata.onelogin_phase
+      : null,
+    clearingUntil: user.app_metadata.onelogin_clearing_until ?? null,
   };
 }
 
@@ -70,6 +77,8 @@ interface PortalValue extends PortalSnapshot {
 
   currentUser: PortalUser | null;
   currentRole: Role | null;
+  /** set while a resigning person is clearing their work — read-only until then */
+  clearingUntil: string | null;
   /** The person's hats (ใบสังกัด). Fewer than two = nothing to switch. */
   assignments: Assignment[];
   activeAssignment: Assignment | null;
@@ -100,6 +109,8 @@ interface PortalValue extends PortalSnapshot {
 }
 
 const PortalContext = createContext<PortalValue | null>(null);
+
+const READ_ONLY: Permission[] = ["portal.view", "app.launch", "audit.view"];
 
 const empty: PortalSnapshot = { apps: [], roles: [], users: [], audit: [] };
 
@@ -210,21 +221,26 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
     };
   }, [data.roles, activeRoleKeys]);
 
+  // Clearing work before leaving (TODO §4): read-only. RLS enforces the same.
+  const clearing = Boolean(sso && currentUser && sso.email === currentUser.email.toLowerCase() && sso.phase === "clearing");
   const can = useCallback(
-    (permission: Permission) => Boolean(currentRole?.permissions.includes(permission)),
-    [currentRole],
+    (permission: Permission) => {
+      if (clearing && !READ_ONLY.includes(permission)) return false;
+      return Boolean(currentRole?.permissions.includes(permission));
+    },
+    [currentRole, clearing],
   );
 
   const canOpen = useCallback(
     (app: PortalApp) => {
       if (!currentRole) return false;
-      if (currentRole.permissions.includes("app.manage")) return true;
+      if (can("app.manage")) return true;
       if (!currentRole.permissions.includes("app.launch")) return false;
       // empty = everyone on staff; a guest (คนนอก) only opens apps that name "guest"
       if (!app.roles.length) return activeRoleKeys.some((key) => key !== "guest");
       return app.roles.some((key) => activeRoleKeys.includes(key));
     },
-    [currentRole, activeRoleKeys],
+    [currentRole, activeRoleKeys, can],
   );
 
   /* ── mutations ────────────────────────────────────────── */
@@ -492,6 +508,7 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
     supabaseReady: isSupabaseConfigured,
     currentUser,
     currentRole,
+    clearingUntil: clearing ? (sso?.clearingUntil ?? null) : null,
     assignments,
     activeAssignment,
     switchAssignment,

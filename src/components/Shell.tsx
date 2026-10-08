@@ -310,8 +310,8 @@ function usePersistentBool(key: string, initial: boolean) {
 }
 
 export function Shell({ children }: { children: React.ReactNode }) {
-  const { t } = usePrefs();
-  const { can, supabaseReady, apps, writeError, dismissWriteError } = usePortal();
+  const { t, locale } = usePrefs();
+  const { can, supabaseReady, apps, writeError, dismissWriteError, clearingUntil } = usePortal();
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -542,6 +542,17 @@ export function Shell({ children }: { children: React.ReactNode }) {
                 : "mx-auto w-full max-w-[1400px] px-4 py-8 sm:px-6 lg:px-8",
             )}
           >
+            {clearingUntil && (
+              <div
+                role="status"
+                className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-[13px] text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300"
+              >
+                {t.dash.clearing.replace(
+                  "{date}",
+                  new Date(`${clearingUntil}T00:00:00`).toLocaleDateString(locale, { dateStyle: "long" }),
+                )}
+              </div>
+            )}
             {writeError && (
               <div
                 role="alert"

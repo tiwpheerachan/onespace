@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { effectiveRights, employmentMeta } from "@/lib/onelogin-effective";
 import { oneloginRoles, portalRoleKeys } from "@/lib/onelogin-roles";
 import { ssoConfig } from "@/lib/sso";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
@@ -82,6 +83,11 @@ export async function GET(req: NextRequest) {
   // Rights come from Onelogin's app.roles (TODO §2); none we know = no rights.
   const roles = oneloginRoles(me.app);
   if (!portalRoleKeys(roles).length) return noAccess();
+
+  // Employment (TODO §4) only comes from /authz/effective. If Onelogin can't
+  // answer, the phase stays unknown (null) and nothing changes for the person.
+  const employment = employmentMeta((await effectiveRights(cfg.baseUrl, String(me.sub ?? "")))?.employment);
+  if (employment.onelogin_phase === "ended") return noAccess();
 
   const sub = me.sub != null ? String(me.sub).trim() : "";
   if (!sub) return fail("nosub");
@@ -170,7 +176,7 @@ export async function GET(req: NextRequest) {
   // saved before the magic link is used, or the session would carry stale rights.
   const { error: rolesErr } = await admin.auth.admin.updateUserById(userId, {
     // name here too: the audit trail stamps it as the actor (supabase/audit_actor.sql)
-    app_metadata: { onelogin_roles: roles, name: me.name ?? email },
+    app_metadata: { onelogin_roles: roles, name: me.name ?? email, ...employment },
   });
   if (rolesErr) {
     console.error("[sso] saving roles failed", rolesErr.message);
