@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { effectiveRights, employmentMeta } from "@/lib/onelogin-effective";
 import { oneloginRoles, portalRoleKeys } from "@/lib/onelogin-roles";
 import { ssoConfig } from "@/lib/sso";
+import { LINK_COOKIE, readLinkIntent } from "@/lib/sso-link";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 
 export const runtime = "nodejs";
@@ -25,13 +26,15 @@ export const dynamic = "force-dynamic";
 export async function GET(req: NextRequest) {
   const cfg = ssoConfig();
   const base = cfg?.appUrl || new URL(req.url).origin;
-  const fail = (reason: string) => NextResponse.redirect(new URL(`/login?sso=${reason}`, base));
-  const noAccess = () => {
-    const res = NextResponse.redirect(new URL("/no-access", base));
+  // every way out burns the one-time cookies, a pending link request included
+  const done = (res: NextResponse) => {
     res.cookies.set("sso_state", "", { path: "/", maxAge: 0 });
     res.cookies.set("sso_pkce", "", { path: "/", maxAge: 0 });
+    res.cookies.set(LINK_COOKIE, "", { path: "/", maxAge: 0 });
     return res;
   };
+  const fail = (reason: string) => done(NextResponse.redirect(new URL(`/login?sso=${reason}`, base)));
+  const noAccess = () => done(NextResponse.redirect(new URL("/no-access", base)));
 
   if (!cfg) return fail("config");
 
@@ -118,6 +121,38 @@ export async function GET(req: NextRequest) {
     return fail("supabase");
   }
 
+  // The owner of an old password account asked to link it (signed cookie from
+  // /api/sso/link): bind this `sub` to THAT account — they proved both sides.
+  const linkUserId = readLinkIntent(req.cookies.get(LINK_COOKIE)?.value);
+  if (linkUserId && userId !== linkUserId) {
+    if (userId) {
+      // this Onelogin account already belongs to another ONE SPACE user
+      console.error("[sso] link refused: sub already linked", { sub, userId, linkUserId });
+      return fail("link_taken");
+    }
+    const { data: old } = await admin.auth.admin.getUserById(linkUserId);
+    if (!old?.user) return fail("supabase");
+    const { error: linkErr } = await admin.from("onelogin_link").insert({ onelogin_sub: sub, user_id: linkUserId });
+    if (linkErr) {
+      // the old account got linked to some other sub meanwhile (user_id is unique)
+      console.error("[sso] link refused", { sub, linkUserId }, linkErr.message);
+      return fail("link_taken");
+    }
+    userId = linkUserId;
+    // who linked what to what, and when (Onelogin's ask) — the service role
+    // writes it, so the audit trigger keeps these words as sent
+    const oldEmail = old.user.email ?? linkUserId;
+    console.info("[sso] account linked", { sub, userId, oldEmail, oneloginEmail: email });
+    await admin
+      .from("portal_audit")
+      .insert({
+        actor: oldEmail,
+        action: "sso.link",
+        target: `${oldEmail} ↔ Onelogin sub ${sub} (${email})`,
+      })
+      .then(({ error }) => error && console.error("[sso] link audit failed", error.message));
+  }
+
   if (userId) {
     // Known person — follow an email change made in Onelogin.
     const { data: u, error } = await admin.auth.admin.getUserById(userId);
@@ -197,8 +232,5 @@ export async function GET(req: NextRequest) {
     })
     .catch((e) => console.error("[sso] metadata refresh failed", e));
 
-  const res = NextResponse.redirect(data.properties.action_link);
-  res.cookies.set("sso_state", "", { path: "/", maxAge: 0 }); // burn the state
-  res.cookies.set("sso_pkce", "", { path: "/", maxAge: 0 });
-  return res;
+  return done(NextResponse.redirect(data.properties.action_link));
 }

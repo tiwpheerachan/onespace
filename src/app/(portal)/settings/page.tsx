@@ -1,13 +1,15 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { Database, Languages, Moon, Palette, RotateCcw, Sun, UserCircle2 } from "lucide-react";
+import { Database, Languages, Link2, Moon, Palette, RotateCcw, Sun, UserCircle2 } from "lucide-react";
+import { useState } from "react";
 import { PageHeader } from "@/components/PageHeader";
 import { Avatar, Badge } from "@/components/ui";
 import { usePortal } from "@/lib/data/store";
 import { LANG_META, LANGS } from "@/lib/i18n/dictionaries";
 import { usePrefs } from "@/lib/i18n/provider";
-import { SUPABASE_URL } from "@/lib/supabase/client";
+import { ssoEnabledPublic } from "@/lib/sso";
+import { authHeader, SUPABASE_URL } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 
 function Card({
@@ -39,9 +41,47 @@ function Card({
   );
 }
 
+/**
+ * An account that still signs in with a ONE SPACE password links itself to
+ * Onelogin here — only its owner can, since they must be signed in to it now
+ * and then sign in to Onelogin. Never matched by email.
+ */
+function LinkOnelogin() {
+  const { t } = usePrefs();
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState<string | null>(null);
+
+  const start = async () => {
+    setBusy(true);
+    setNote(null);
+    try {
+      const r = await fetch("/api/sso/link", { method: "POST", headers: await authHeader() });
+      if (r.ok) {
+        window.location.assign("/sso/login");
+        return;
+      }
+      setNote(r.status === 409 ? t.settings.linkAlready : t.settings.linkFailed);
+    } catch {
+      setNote(t.settings.linkFailed);
+    }
+    setBusy(false);
+  };
+
+  return (
+    <Card icon={<Link2 className="h-4 w-4" />} title={t.settings.linkTitle} delay={0.03}>
+      <p className="text-[12.5px] leading-relaxed text-ink-soft">{t.settings.linkBody}</p>
+      <button onClick={start} disabled={busy} className="btn-primary btn-sm mt-4">
+        <Link2 className="h-3.5 w-3.5" />
+        {t.settings.linkButton}
+      </button>
+      {note && <p className="mt-3 text-[12.5px] text-ink-soft">{note}</p>}
+    </Card>
+  );
+}
+
 export default function SettingsPage() {
   const { t, lang, setLang, theme, setTheme } = usePrefs();
-  const { currentUser, currentRole, supabaseReady, resetDemo, apps, users, roles } = usePortal();
+  const { currentUser, currentRole, supabaseReady, resetDemo, apps, users, roles, viaSso } = usePortal();
 
   return (
     <>
@@ -78,6 +118,8 @@ export default function SettingsPage() {
             </div>
           </dl>
         </Card>
+
+        {supabaseReady && ssoEnabledPublic && !viaSso && <LinkOnelogin />}
 
         <Card icon={<Palette className="h-4 w-4" />} title={t.settings.appearance} delay={0.06}>
           <p className="label">{t.common.theme}</p>
