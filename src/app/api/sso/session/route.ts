@@ -35,6 +35,17 @@ export async function POST(req: NextRequest) {
   const { data: auth, error: authError } = await admin.auth.getUser(token);
   if (authError || !auth.user) return reply("skip");
 
+  // Onelogin says this person is out (signed out / closed / no rights left):
+  // end their Supabase sessions here, on every device — not only ask this
+  // browser to sign out. A tab left closed, or a copied token, would otherwise
+  // keep refreshing. An access token already issued still works until it
+  // expires (Supabase JWT expiry), which is the limit of what we can cut.
+  const endEverywhere = async (status: "inactive" | "noaccess") => {
+    const { error } = await admin.auth.admin.signOut(token, "global");
+    if (error) console.error("[sso] ending sessions failed", error.message);
+    return reply(status);
+  };
+
   const meta = auth.user.user_metadata ?? {};
   const sub = meta.sub as string | undefined;
   const iat = meta.iat as number | undefined;
@@ -79,11 +90,11 @@ export async function POST(req: NextRequest) {
     return reply("unknown");
   }
 
-  if (central.active === false) return reply("inactive");
+  if (central.active === false) return endEverywhere("inactive");
   if (central.active !== true) return reply("unknown");
   // no hat worn = the union has nothing left. A worn hat with nothing left goes
   // through the reload below, which decides on that hat's own answer.
-  if (!worn && central.grants_version === "no-access") return reply("noaccess");
+  if (!worn && central.grants_version === "no-access") return endEverywhere("noaccess");
 
   // Rights changed centrally → reload them from /authz/effective and overwrite
   // what we hold (TODO §3). Employment (TODO §4) is compared every round below;
@@ -119,10 +130,10 @@ export async function POST(req: NextRequest) {
   const hatSwitched = (am.onelogin_hat ?? null) !== rights.hats.onelogin_hat;
   const roles = grantsChanged || hatSwitched ? oneloginRoles(fresh) : oneloginRoles({ roles: am.onelogin_roles });
   if ((grantsChanged || hatSwitched) && (fresh.hasAccess === false || fresh.has_access === false || !portalRoleKeys(roles).length)) {
-    return reply("noaccess");
+    return endEverywhere("noaccess");
   }
   const employment = employmentMeta(fresh.employment);
-  if (employment.onelogin_phase === "ended") return reply("noaccess");
+  if (employment.onelogin_phase === "ended") return endEverywhere("noaccess");
 
   const { error } = await admin.auth.admin.updateUserById(auth.user.id, {
     app_metadata: {

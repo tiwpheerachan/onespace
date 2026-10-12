@@ -229,7 +229,9 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
   );
 
   // Rights come from the hat being worn only (plan "แบบ ข") — never the union of
-  // every hat, so a request raised in one hat can't be approved from another.
+  // every hat. That separates rights, not people: the same person can still
+  // switch hats, so "don't approve your own request" has to be checked on the
+  // server by requester ≠ approver, wherever approvals exist.
   // Without hats, the person's single portal role applies as before.
   // SSO users hold every role Onelogin gave them (mapped to portal roles).
   // SSO users: the server already put the worn hat's roles in app_metadata (and
