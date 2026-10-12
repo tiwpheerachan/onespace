@@ -39,6 +39,9 @@ interface SsoIdentity {
   /** Onelogin employment phase; null = unknown → treated as normal */
   phase: "normal" | "clearing" | null;
   clearingUntil: string | null;
+  /** GoodHR hats from Onelogin (two or more = choose) and the one being worn — set by the server */
+  hats: { id: string; label: string; isPrimary: boolean; isActing: boolean }[];
+  hat: string | null;
 }
 
 async function loadSsoIdentity(): Promise<SsoIdentity | null> {
@@ -62,6 +65,8 @@ async function loadSsoIdentity(): Promise<SsoIdentity | null> {
       ? user.app_metadata.onelogin_phase
       : null,
     clearingUntil: user.app_metadata.onelogin_clearing_until ?? null,
+    hats: Array.isArray(user.app_metadata.onelogin_hats) ? user.app_metadata.onelogin_hats : [],
+    hat: typeof user.app_metadata.onelogin_hat === "string" ? user.app_metadata.onelogin_hat : null,
   };
 }
 
@@ -191,10 +196,20 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
 
   /* ── hats ─────────────────────────────────────────────── */
   const sessionUserEmail = currentUser?.email.toLowerCase() ?? null;
+  const ssoSelfHats = sso && sso.email === sessionUserEmail ? sso : null;
   useEffect(() => {
     setAssignments([]);
     setActiveAssignmentId(null);
     if (!sessionUserEmail) return;
+    // SSO: Onelogin lists the hats and the server says which one is worn —
+    // rights already match it (app_metadata), the browser only shows the choice
+    if (ssoSelfHats) {
+      setAssignments(ssoSelfHats.hats.map((h) => ({
+        id: h.id, label: h.label, isPrimary: h.isPrimary, isActing: h.isActing, roles: [],
+      })));
+      setActiveAssignmentId(ssoSelfHats.hat);
+      return;
+    }
     let alive = true;
     (async () => {
       const list = await loadAssignments(sessionUserEmail).catch(() => []);
@@ -206,7 +221,7 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
     return () => {
       alive = false;
     };
-  }, [sessionUserEmail]);
+  }, [sessionUserEmail, ssoSelfHats]);
 
   const activeAssignment = useMemo(
     () => assignments.find((a) => a.id === activeAssignmentId) ?? null,
@@ -217,10 +232,13 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
   // every hat, so a request raised in one hat can't be approved from another.
   // Without hats, the person's single portal role applies as before.
   // SSO users hold every role Onelogin gave them (mapped to portal roles).
+  // SSO users: the server already put the worn hat's roles in app_metadata (and
+  // so in the JWT RLS reads) — the browser never picks rights on its own.
   const activeRoleKeys = useMemo(
     () =>
-      activeAssignment?.roles ??
-      (!currentUser ? [] : sso?.email === currentUser.email.toLowerCase() ? sso.roleKeys : [currentUser.roleKey]),
+      !currentUser ? []
+        : sso?.email === currentUser.email.toLowerCase() ? sso.roleKeys
+        : activeAssignment?.roles ?? [currentUser.roleKey],
     [activeAssignment, currentUser, sso],
   );
 
@@ -315,11 +333,30 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
     (id: string) => {
       const next = assignments.find((a) => a.id === id);
       if (!next || !sessionUserEmail || next.id === activeAssignmentId) return;
+      if (ssoSelfHats) {
+        // the server switches rights (and audits it); the new rights ride in a fresh token
+        void (async () => {
+          const sb = getSupabase();
+          const { data: s } = (await sb?.auth.getSession()) ?? { data: { session: null } };
+          const token = s.session?.access_token;
+          if (!sb || !token) return;
+          const r = await fetch("/api/sso/hat", {
+            method: "POST",
+            headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+            body: JSON.stringify({ assignment_id: next.id }),
+          }).then((x) => x.json()).catch(() => ({ status: "unknown" }));
+          if (r.status === "ok" || r.status === "invalid") {
+            await sb.auth.refreshSession();
+            await reloadRights();
+          }
+        })();
+        return;
+      }
       setActiveAssignmentId(next.id);
       window.localStorage.setItem(`nexus.hat.${sessionUserEmail}`, next.id);
       log("assignment.switch", next.label);
     },
-    [assignments, activeAssignmentId, sessionUserEmail, log],
+    [assignments, activeAssignmentId, sessionUserEmail, log, ssoSelfHats, reloadRights],
   );
 
   const saveApp = useCallback(

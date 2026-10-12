@@ -66,6 +66,7 @@ const en = {
     switchTitle: "Switch hat",
     switchHint: "Rights follow the hat you wear — switch any time, no need to sign in again.",
     primary: "Primary",
+    acting: "Acting",
   },
   demo: {
     badge: "Demo mode",
@@ -512,6 +513,7 @@ const th: Dict = {
     switchTitle: "สลับหมวก",
     switchHint: "สิทธิ์เป็นไปตามหมวกที่เลือก สลับได้ตลอดโดยไม่ต้องล็อกอินใหม่",
     primary: "ใบหลัก",
+    acting: "รักษาการ",
   },
   demo: {
     badge: "โหมดสาธิต",
@@ -954,6 +956,7 @@ const zh: Dict = {
     switchTitle: "切换身份",
     switchHint: "权限以所选身份为准，可随时切换，无需重新登录。",
     primary: "主要",
+    acting: "代理",
   },
   demo: {
     badge: "演示模式",

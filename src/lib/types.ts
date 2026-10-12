@@ -176,6 +176,9 @@ export interface Assignment {
   label: string;
   /** The primary affiliation — only the default hat, it carries no extra rights. */
   isPrimary: boolean;
+  /** Acting in this post (รักษาการ) — GoodHR `is_acting` */
+  isActing?: boolean;
+  /** Demo hats carry their roles; SSO hats don't — the server holds the worn hat's rights. */
   roles: string[];
 }
 

@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { EMPLOYMENT_REFRESH_MS, effectiveRights, employmentMeta } from "@/lib/onelogin-effective";
+import { EMPLOYMENT_REFRESH_MS, employmentMeta, hatRights } from "@/lib/onelogin-effective";
 import { oneloginRoles, portalRoleKeys } from "@/lib/onelogin-roles";
 import { ssoConfig } from "@/lib/sso";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
@@ -81,18 +81,23 @@ export async function POST(req: NextRequest) {
   // a session from before roles lived in app_metadata — leave it to the next login
   if (!grantsChanged && !Array.isArray(am.onelogin_roles)) return reply("active");
 
-  const fresh = await effectiveRights(cfg.baseUrl, sub);
-  if (!fresh) return reply("active");
+  // reload in the hat being worn — a hat Onelogin no longer accepts falls back
+  // to the primary, never to the union of every hat (lib/onelogin-effective.ts)
+  const rights = await hatRights(cfg.baseUrl, sub, (am.onelogin_hat as string | null | undefined) ?? null);
+  if (!rights) return reply("active");
+  const fresh = rights.eff;
   // only a grants change replaces the roles; an employment refresh keeps them
-  const roles = grantsChanged ? oneloginRoles(fresh) : oneloginRoles({ roles: am.onelogin_roles });
-  if (grantsChanged && (fresh.hasAccess === false || fresh.has_access === false || !portalRoleKeys(roles).length)) {
+  // the hat worn changed underneath (acting ended, job moved) → its rights change too
+  const hatSwitched = (am.onelogin_hat ?? null) !== rights.hats.onelogin_hat;
+  const roles = grantsChanged || hatSwitched ? oneloginRoles(fresh) : oneloginRoles({ roles: am.onelogin_roles });
+  if ((grantsChanged || hatSwitched) && (fresh.hasAccess === false || fresh.has_access === false || !portalRoleKeys(roles).length)) {
     return reply("noaccess");
   }
   const employment = employmentMeta(fresh.employment);
   if (employment.onelogin_phase === "ended") return reply("noaccess");
 
   const { error } = await admin.auth.admin.updateUserById(auth.user.id, {
-    app_metadata: { ...am, onelogin_roles: roles, ...employment },
+    app_metadata: { ...am, onelogin_roles: roles, ...employment, ...rights.hats },
     ...(grantsChanged && {
       user_metadata: { ...meta, app: { ...(meta.app ?? {}), roles, grants_version: central.grants_version } },
     }),
@@ -104,5 +109,7 @@ export async function POST(req: NextRequest) {
   const phaseChanged =
     (am.onelogin_phase ?? null) !== employment.onelogin_phase ||
     (am.onelogin_clearing_until ?? null) !== employment.onelogin_clearing_until;
-  return reply(grantsChanged || phaseChanged ? "changed" : "active");
+  const hatChanged = hatSwitched ||
+    JSON.stringify(am.onelogin_hats ?? []) !== JSON.stringify(rights.hats.onelogin_hats);
+  return reply(grantsChanged || phaseChanged || hatChanged ? "changed" : "active");
 }

@@ -181,6 +181,11 @@ function HatSwitcher() {
                           {t.hat.primary}
                         </span>
                       )}
+                      {a.isActing && (
+                        <span className="rounded-full bg-canvas px-1.5 py-px text-[10.5px] font-semibold text-ink-mute">
+                          {t.hat.acting}
+                        </span>
+                      )}
                     </span>
                   </span>
                 </button>

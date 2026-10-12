@@ -12,7 +12,8 @@ import type { Assignment } from "@/lib/types";
  */
 export async function loadAssignments(email: string): Promise<Assignment[]> {
   if (isSupabaseConfigured) {
-    // TODO(phase 3): fetch `assignments` from Onelogin /authz/effective.
+    // SSO users' hats come from Onelogin via the server (app_metadata.onelogin_hats,
+    // see src/lib/data/store.tsx) — nothing to load here.
     return [];
   }
   return DEMO_ASSIGNMENTS[email.toLowerCase()] ?? [];

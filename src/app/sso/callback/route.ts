@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { effectiveRights, employmentMeta } from "@/lib/onelogin-effective";
+import { employmentMeta, hatRights } from "@/lib/onelogin-effective";
 import { oneloginRoles, portalRoleKeys } from "@/lib/onelogin-roles";
 import { ssoConfig } from "@/lib/sso";
 import { LINK_COOKIE, readLinkIntent } from "@/lib/sso-link";
@@ -87,12 +87,16 @@ export async function GET(req: NextRequest) {
   // only an explicit false means "signed in, but no rights here".
   if (me.app?.has_access === false) return noAccess();
   // Rights come from Onelogin's app.roles (TODO §2); none we know = no rights.
-  const roles = oneloginRoles(me.app);
-  if (!portalRoleKeys(roles).length) return noAccess();
-
+  // Someone holding two or more GoodHR hats starts in the primary one and gets
+  // that hat's rights only (plan "แบบ ข") — app.roles from /verify is the union
+  // of every hat, which is exactly what hats exist to prevent.
   // Employment (TODO §4) only comes from /authz/effective. If Onelogin can't
   // answer, the phase stays unknown (null) and nothing changes for the person.
-  const employment = employmentMeta((await effectiveRights(cfg.baseUrl, String(me.sub ?? "")))?.employment);
+  const rights = await hatRights(cfg.baseUrl, String(me.sub ?? ""), null);
+  const roles = rights?.hats.onelogin_hat ? oneloginRoles(rights.eff) : oneloginRoles(me.app);
+  if (!portalRoleKeys(roles).length) return noAccess();
+  const employment = employmentMeta(rights?.eff.employment);
+  const hats = rights?.hats ?? { onelogin_hats: [], onelogin_hat: null };
   if (employment.onelogin_phase === "ended") return noAccess();
 
   const sub = me.sub != null ? String(me.sub).trim() : "";
@@ -214,7 +218,7 @@ export async function GET(req: NextRequest) {
   // saved before the magic link is used, or the session would carry stale rights.
   const { error: rolesErr } = await admin.auth.admin.updateUserById(userId, {
     // name here too: the audit trail stamps it as the actor (supabase/audit_actor.sql)
-    app_metadata: { onelogin_roles: roles, name: me.name ?? email, ...employment },
+    app_metadata: { onelogin_roles: roles, name: me.name ?? email, ...employment, ...hats },
   });
   if (rolesErr) {
     console.error("[sso] saving roles failed", rolesErr.message);
