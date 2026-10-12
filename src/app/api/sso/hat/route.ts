@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { INVALID_HAT, effectiveRights, employmentMeta, hatRights } from "@/lib/onelogin-effective";
+import { INVALID_HAT, effectiveRights, employmentMeta, hatRights, versionMeta } from "@/lib/onelogin-effective";
 import { oneloginRoles, portalRoleKeys } from "@/lib/onelogin-roles";
 import { ssoConfig } from "@/lib/sso";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
@@ -44,7 +44,7 @@ export async function POST(req: NextRequest) {
     const rights = await hatRights(cfg.baseUrl, sub, null);
     if (rights) {
       await admin.auth.admin.updateUserById(auth.user.id, {
-        app_metadata: { ...am, onelogin_roles: oneloginRoles(rights.eff), ...rights.hats },
+        app_metadata: { ...am, onelogin_roles: oneloginRoles(rights.eff), ...rights.hats, ...versionMeta(rights.eff) },
       });
     }
     return reply("invalid");
@@ -55,7 +55,7 @@ export async function POST(req: NextRequest) {
   if (eff.hasAccess === false || eff.has_access === false || !portalRoleKeys(roles).length) return reply("noaccess");
 
   const { error } = await admin.auth.admin.updateUserById(auth.user.id, {
-    app_metadata: { ...am, onelogin_roles: roles, onelogin_hat: wanted, ...employmentMeta(eff.employment) },
+    app_metadata: { ...am, onelogin_roles: roles, onelogin_hat: wanted, ...employmentMeta(eff.employment), ...versionMeta(eff) },
   });
   if (error) {
     console.error("[sso] saving hat failed", error.message);

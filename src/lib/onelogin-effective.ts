@@ -36,6 +36,10 @@ export interface Effective {
   /** hats the person may wear today · null = none to choose (guest, no GoodHR data) */
   assignments?: OneloginHat[] | null;
   assignment_id?: string | null;
+  /** fingerprint of this answer's rights — for the hat it was asked with */
+  grants_version?: string | null;
+  /** fingerprint of the hat list — changes when a hat is added, closed or re-dated */
+  assignments_version?: string | null;
 }
 
 /** Onelogin refused the hat (closed, moved job, not theirs) — choose again, never fall back to "all hats". */
@@ -95,6 +99,18 @@ export async function effectiveRights(
 export interface HatMeta {
   onelogin_hats: { id: string; label: string; isPrimary: boolean; isActing: boolean }[];
   onelogin_hat: string | null;
+  /** compared with Onelogin's session check to notice a new or closed hat within a minute */
+  onelogin_assignments_version: string | null;
+}
+
+/**
+ * The grants_version of the rights we hold, kept in app_metadata (users can
+ * edit user_metadata). It is the worn hat's version — the session check asks
+ * Onelogin for that same hat, so a right taken away from this hat alone is
+ * noticed even when the union of every hat stays the same.
+ */
+export function versionMeta(eff: Effective | null | undefined) {
+  return { onelogin_grants_version: typeof eff?.grants_version === "string" ? eff.grants_version : null };
 }
 
 const hatLabel = (h: OneloginHat) =>
@@ -120,6 +136,7 @@ export async function hatRights(
       id: h.assignment_id, label: hatLabel(h), isPrimary: h.is_primary, isActing: h.is_acting,
     })),
     onelogin_hat: null,
+    onelogin_assignments_version: plain.assignments_version ?? null,
   };
   if (list.length < 2) return { eff: plain, hats };
 

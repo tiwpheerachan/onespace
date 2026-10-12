@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { employmentMeta, hatRights } from "@/lib/onelogin-effective";
+import { employmentMeta, hatRights, versionMeta } from "@/lib/onelogin-effective";
 import { oneloginRoles, portalRoleKeys } from "@/lib/onelogin-roles";
 import { ssoConfig } from "@/lib/sso";
 import { LINK_COOKIE, readLinkIntent } from "@/lib/sso-link";
@@ -96,7 +96,7 @@ export async function GET(req: NextRequest) {
   const roles = rights?.hats.onelogin_hat ? oneloginRoles(rights.eff) : oneloginRoles(me.app);
   if (!portalRoleKeys(roles).length) return noAccess();
   const employment = employmentMeta(rights?.eff.employment);
-  const hats = rights?.hats ?? { onelogin_hats: [], onelogin_hat: null };
+  const hats = rights?.hats ?? { onelogin_hats: [], onelogin_hat: null, onelogin_assignments_version: null };
   if (employment.onelogin_phase === "ended") return noAccess();
 
   const sub = me.sub != null ? String(me.sub).trim() : "";
@@ -218,7 +218,7 @@ export async function GET(req: NextRequest) {
   // saved before the magic link is used, or the session would carry stale rights.
   const { error: rolesErr } = await admin.auth.admin.updateUserById(userId, {
     // name here too: the audit trail stamps it as the actor (supabase/audit_actor.sql)
-    app_metadata: { onelogin_roles: roles, name: me.name ?? email, ...employment, ...hats },
+    app_metadata: { onelogin_roles: roles, name: me.name ?? email, ...employment, ...hats, ...versionMeta(rights?.eff) },
   });
   if (rolesErr) {
     console.error("[sso] saving roles failed", rolesErr.message);

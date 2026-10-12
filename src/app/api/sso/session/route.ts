@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { EMPLOYMENT_REFRESH_MS, employmentMeta, hatRights } from "@/lib/onelogin-effective";
+import { EMPLOYMENT_REFRESH_MS, employmentMeta, hatRights, versionMeta } from "@/lib/onelogin-effective";
 import { oneloginRoles, portalRoleKeys } from "@/lib/onelogin-roles";
 import { ssoConfig } from "@/lib/sso";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
@@ -40,7 +40,20 @@ export async function POST(req: NextRequest) {
   const iat = meta.iat as number | undefined;
   if (!sub || iat == null) return reply("skip");
 
-  let central: { active?: boolean; grants_version?: string | null };
+  // ask in the hat being worn: the union of every hat doesn't move when a right
+  // is taken from one hat only, so the worn hat would keep it for hours
+  const am = auth.user.app_metadata ?? {};
+  const worn = typeof am.onelogin_hat === "string" && am.onelogin_hat ? am.onelogin_hat : null;
+
+  let central: {
+    active?: boolean;
+    grants_version?: string | null;
+    /** Onelogin no longer accepts the worn hat (acting ended, job moved) */
+    assignment_error?: string;
+    /** absent = an older Onelogin that doesn't send it — fall back to the 6-hour refresh */
+    employment_phase?: string | null;
+    assignments_version?: string;
+  };
   try {
     const r = await fetch(`${cfg.baseUrl}/api/v1/sso/session`, {
       method: "POST",
@@ -51,6 +64,8 @@ export async function POST(req: NextRequest) {
         sub,
         iat,
         want_grants_version: true,
+        ...(worn ? { assignment_id: worn } : {}),
+        want_employment: true,
       }),
       signal: AbortSignal.timeout(8000),
     });
@@ -66,18 +81,31 @@ export async function POST(req: NextRequest) {
 
   if (central.active === false) return reply("inactive");
   if (central.active !== true) return reply("unknown");
-  if (central.grants_version === "no-access") return reply("noaccess");
+  // no hat worn = the union has nothing left. A worn hat with nothing left goes
+  // through the reload below, which decides on that hat's own answer.
+  if (!worn && central.grants_version === "no-access") return reply("noaccess");
 
   // Rights changed centrally → reload them from /authz/effective and overwrite
-  // what we hold (TODO §3). Employment isn't covered by grants_version, so it is
-  // re-read every few hours too (TODO §4). Until a reload succeeds nothing is
-  // saved, so the next round tries again.
-  const held = (meta.app as { grants_version?: string } | null)?.grants_version;
-  const grantsChanged = Boolean(central.grants_version && central.grants_version !== held);
-  const am = auth.user.app_metadata ?? {};
+  // what we hold (TODO §3). Employment (TODO §4) is compared every round below;
+  // the few-hourly re-read stays as a safety net. Until a reload succeeds
+  // nothing is saved, so the next round tries again.
+  // Sessions from before app_metadata kept the version fall back to the login copy
+  // (a union version) — they reload once, then hold the worn hat's version.
+  const held =
+    (am.onelogin_grants_version as string | null | undefined) ??
+    (meta.app as { grants_version?: string } | null)?.grants_version;
+  const grantsChanged = Boolean(central.assignment_error) ||
+    Boolean(central.grants_version && central.grants_version !== held);
+  // the phase moves with the calendar (clearing starts) and a hat can be added
+  // without any right changing — neither shows in grants_version, so Onelogin
+  // sends both and we compare every round instead of waiting 6 hours
+  const phaseMoved = "employment_phase" in central &&
+    (central.employment_phase ?? null) !== (am.onelogin_phase ?? null);
+  const hatsMoved = Boolean(central.assignments_version) &&
+    central.assignments_version !== (am.onelogin_assignments_version ?? null);
   const checkedAt = Date.parse(String(am.onelogin_checked_at ?? ""));
   const employmentStale = !(checkedAt > Date.now() - EMPLOYMENT_REFRESH_MS);
-  if (!grantsChanged && !employmentStale) return reply("active");
+  if (!grantsChanged && !phaseMoved && !hatsMoved && !employmentStale) return reply("active");
   // a session from before roles lived in app_metadata — leave it to the next login
   if (!grantsChanged && !Array.isArray(am.onelogin_roles)) return reply("active");
 
@@ -97,9 +125,13 @@ export async function POST(req: NextRequest) {
   if (employment.onelogin_phase === "ended") return reply("noaccess");
 
   const { error } = await admin.auth.admin.updateUserById(auth.user.id, {
-    app_metadata: { ...am, onelogin_roles: roles, ...employment, ...rights.hats },
+    app_metadata: {
+      ...am, onelogin_roles: roles, ...employment, ...rights.hats,
+      // the version goes with the roles: only replaced when they are
+      ...(grantsChanged || hatSwitched ? versionMeta(fresh) : {}),
+    },
     ...(grantsChanged && {
-      user_metadata: { ...meta, app: { ...(meta.app ?? {}), roles, grants_version: central.grants_version } },
+      user_metadata: { ...meta, app: { ...(meta.app ?? {}), roles, grants_version: fresh.grants_version ?? central.grants_version } },
     }),
   });
   if (error) {
