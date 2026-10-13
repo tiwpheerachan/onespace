@@ -43,9 +43,13 @@ export function OneloginApps() {
             rel="noopener noreferrer"
             className="group flex items-center gap-3 rounded-xl border border-line bg-surface px-3 py-2.5 text-left transition hover:border-brand-300"
           >
-            <span className="grid h-8 w-8 shrink-0 place-items-center rounded-[10px] bg-canvas text-[13px] font-semibold text-ink">
-              {app.name.trim().charAt(0).toUpperCase()}
-            </span>
+            {app.logo ? (
+              <img src={app.logo} alt="" className="h-8 w-8 shrink-0 rounded-[10px] object-cover" />
+            ) : (
+              <span className="grid h-8 w-8 shrink-0 place-items-center rounded-[10px] bg-canvas text-[13px] font-semibold text-ink">
+                {app.name.trim().charAt(0).toUpperCase()}
+              </span>
+            )}
             <span className="min-w-0 flex-1">
               <span className="block truncate text-[12.5px] font-semibold text-ink">{app.name}</span>
               {app.description && (

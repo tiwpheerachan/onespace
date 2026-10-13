@@ -13,6 +13,8 @@ export interface OneloginApp {
   description: string;
   url: string;
   icon: string;
+  /** our own /api/onelogin/logo/<id>?v=<hash> — null = no logo set in Onelogin */
+  logo: string | null;
 }
 
 /**
@@ -50,10 +52,24 @@ export async function GET(req: NextRequest) {
     }
     const body = (await r.json()) as { apps?: OneloginApp[] };
     // only http(s) links reach an <a href> — a stray javascript: URL must never become a tile
-    const apps = (body.apps ?? []).filter((a) => /^https?:\/\//i.test(a.url));
+    const apps = (body.apps ?? [])
+      .filter((a) => /^https?:\/\//i.test(a.url))
+      .map((a) => ({ ...a, logo: ownLogoPath(a.logo) }));
     return NextResponse.json({ apps });
   } catch (e) {
     console.error("[sso] apps/mine error", e);
     return none;
   }
+}
+
+/**
+ * Onelogin's logo URL needs our API key, so the browser can't load it — point
+ * the tile at our proxy instead. Only the id and hash are kept: the proxy always
+ * asks SSO_BASE_URL, so the host in Onelogin's answer is never fetched (and may
+ * differ from ours behind a custom domain). Anything else shaped is dropped.
+ */
+function ownLogoPath(logo: string | null | undefined): string | null {
+  if (!logo) return null;
+  const m = /\/api\/v1\/apps\/logo\/(\d+)\?v=([0-9a-f]{8})$/.exec(logo);
+  return m ? `/api/onelogin/logo/${m[1]}?v=${m[2]}` : null;
 }
