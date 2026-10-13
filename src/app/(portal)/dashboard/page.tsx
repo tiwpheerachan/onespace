@@ -19,6 +19,7 @@ import { useMemo, useState } from "react";
 import { AppDetail } from "@/components/AppDetail";
 import { AppLogo } from "@/components/AppLogo";
 import { AppTile } from "@/components/AppTile";
+import { OneloginApps } from "@/components/OneloginApps";
 import { Badge, EmptyState, SectionTitle } from "@/components/ui";
 import { usePortal } from "@/lib/data/store";
 import { usePrefs } from "@/lib/i18n/provider";
@@ -195,6 +196,8 @@ export default function DashboardPage() {
           </motion.section>
         )}
       </AnimatePresence>
+
+      <OneloginApps />
 
       {/* ── recent ─────────────────────────────────────── */}
       {recentApps.length > 0 && (
