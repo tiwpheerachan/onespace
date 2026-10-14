@@ -67,6 +67,10 @@ export interface PortalApp {
   /** The app's id in Onelogin. Set = Onelogin alone decides who sees the tile, and
    *  `roles` is ignored; unset = portal roles decide, as before. */
   oneloginAppId?: number | null;
+  /** The app's own "start Onelogin sign-in" link that accepts ?assignment_id= (e.g.
+   *  internal-approve's /api/auth/sso/login). Set = opening the app goes through it
+   *  with the hat being worn here, so the app's rights follow that hat. */
+  hatLoginUrl?: string | null;
   /** Central-identity authorization model (SSO + per-app roles/resources). */
   sso?: AppSso;
   resources?: AppResource[];

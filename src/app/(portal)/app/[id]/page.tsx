@@ -22,7 +22,7 @@ export default function AppViewerPage() {
   const id = Array.isArray(params.id) ? params.id[0] : params.id;
   const router = useRouter();
   const { t } = usePrefs();
-  const { apps, canOpen, registerLaunch, registerUsage, loading: portalLoading } = usePortal();
+  const { apps, canOpen, launchUrl, registerLaunch, registerUsage, loading: portalLoading } = usePortal();
 
   const app = apps.find((a) => a.id === id);
   const allowed = app ? canOpen(app) : false;
@@ -92,7 +92,7 @@ export default function AppViewerPage() {
   }, [app?.url, allowed, reloadKey, app]);
 
   const openExternal = () => {
-    if (app) window.open(app.url, "_blank", "noopener,noreferrer");
+    if (app) window.open(launchUrl(app), "_blank", "noopener,noreferrer");
   };
   const goFullscreen = () => frameRef.current?.requestFullscreen?.();
 
@@ -222,7 +222,7 @@ export default function AppViewerPage() {
         <iframe
           key={reloadKey}
           ref={frameRef}
-          src={app.url}
+          src={launchUrl(app)}
           title={app.name}
           className={cn("h-full w-full border-0 bg-white", (loading || blocked) && "opacity-0")}
           referrerPolicy="no-referrer-when-downgrade"

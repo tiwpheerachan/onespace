@@ -42,6 +42,7 @@ export default function DashboardPage() {
     recents,
     clearRecents,
     registerLaunch,
+    launchUrl,
   } = usePortal();
 
   const [query, setQuery] = useState("");
@@ -80,7 +81,7 @@ export default function DashboardPage() {
   const launch = (app: PortalApp) => {
     if (app.openInNewTab) {
       registerLaunch(app);
-      window.open(app.url, "_blank", "noopener,noreferrer");
+      window.open(launchUrl(app), "_blank", "noopener,noreferrer");
       return;
     }
     router.push(`/app/${app.id}`);

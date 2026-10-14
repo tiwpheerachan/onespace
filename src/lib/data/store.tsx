@@ -113,6 +113,8 @@ interface PortalValue extends PortalSnapshot {
   switchAssignment: (id: string) => void;
   can: (permission: Permission) => boolean;
   canOpen: (app: PortalApp) => boolean;
+  /** Where opening an app goes — through its hat sign-in link when it has one. */
+  launchUrl: (app: PortalApp) => string;
 
   /** Re-read rights after Onelogin changed them (session check said "changed"). */
   reloadRights: () => Promise<void>;
@@ -303,6 +305,26 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
       return app.roles.some((key) => activeRoleKeys.includes(key));
     },
     [currentRole, activeRoleKeys, can, oneloginIds],
+  );
+
+  // Hats are per app: without this the app signs in with its own default (the
+  // primary hat) whatever is worn here. Its sign-in link restarts Onelogin login
+  // every time, so the app also drops rights it cached from an older session.
+  // A link on another host than the app is ignored — a typo must not send people
+  // (and their hat id) somewhere else.
+  const launchUrl = useCallback(
+    (app: PortalApp) => {
+      if (!app.hatLoginUrl) return app.url;
+      try {
+        const u = new URL(app.hatLoginUrl);
+        if (u.origin !== new URL(app.url).origin) return app.url;
+        if (activeAssignmentId) u.searchParams.set("assignment_id", activeAssignmentId);
+        return u.toString();
+      } catch {
+        return app.url;
+      }
+    },
+    [activeAssignmentId],
   );
 
   /* ── mutations ────────────────────────────────────────── */
@@ -606,6 +628,7 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
     switchAssignment,
     can,
     canOpen,
+    launchUrl,
     reloadRights,
     signIn,
     finishSignIn,

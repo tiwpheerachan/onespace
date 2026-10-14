@@ -372,6 +372,15 @@ export default function AdminAppsPage() {
                 />
               </Field>
 
+              <Field label={t.apps.hatLoginUrl} hint={t.apps.hatLoginUrlHint}>
+                <input
+                  className="input"
+                  value={draft.hatLoginUrl ?? ""}
+                  onChange={(e) => patch({ hatLoginUrl: e.target.value || null })}
+                  placeholder="https://…/api/auth/sso/login"
+                />
+              </Field>
+
               {/* ── maintainer / contact ─────────────────── */}
               <div>
                 <p className="label flex items-center gap-1.5">

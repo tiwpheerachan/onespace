@@ -54,7 +54,7 @@ export function resetLocal(): PortalSnapshot {
 // portal_apps.authz holds display-only extras every signed-in user may read.
 // The SSO secret, grants and resource model live in portal_app_authz, which
 // only app.manage holders can read (supabase/onelogin_roles.sql).
-type AppDisplay = Pick<PortalApp, "coverUrl" | "logoShape" | "longDescription" | "maintainer" | "openInNewTab" | "oneloginAppId">;
+type AppDisplay = Pick<PortalApp, "coverUrl" | "logoShape" | "longDescription" | "maintainer" | "openInNewTab" | "oneloginAppId" | "hatLoginUrl">;
 type AppAuthz = Pick<PortalApp, "sso" | "resources" | "capabilities" | "appRoles" | "grants">;
 
 type AppRow = {
@@ -99,6 +99,7 @@ const toApp = (r: AppRow, secret?: Partial<AppAuthz>): PortalApp => {
     maintainer: authz.maintainer ?? null,
     openInNewTab: authz.openInNewTab ?? false,
     oneloginAppId: authz.oneloginAppId ?? null,
+    hatLoginUrl: authz.hatLoginUrl ?? null,
     sso: authz.sso,
     resources: authz.resources,
     capabilities: authz.capabilities,
@@ -128,6 +129,7 @@ const fromApp = (a: PortalApp) => ({
     maintainer: a.maintainer ?? null,
     openInNewTab: a.openInNewTab ?? false,
     oneloginAppId: a.oneloginAppId ?? null,
+    hatLoginUrl: a.hatLoginUrl?.trim() || null,
   },
 });
 
