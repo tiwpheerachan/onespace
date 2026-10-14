@@ -190,7 +190,9 @@ export default function AdminAppsPage() {
               <span className="text-[12.5px] text-ink-soft">{t.cat[app.category]}</span>
 
               <div className="flex flex-wrap gap-1">
-                {app.roles.length === 0 ? (
+                {app.oneloginAppId ? (
+                  <span className="chip">{t.apps.byOnelogin}</span>
+                ) : app.roles.length === 0 ? (
                   <span className="chip">{t.common.all}</span>
                 ) : (
                   app.roles.slice(0, 3).map((key) => {
@@ -357,6 +359,19 @@ export default function AdminAppsPage() {
                 </span>
               </label>
 
+              <Field label={t.apps.oneloginAppId} hint={t.apps.oneloginAppIdHint}>
+                <input
+                  className="input"
+                  inputMode="numeric"
+                  value={draft.oneloginAppId ?? ""}
+                  onChange={(e) => {
+                    const n = Number(e.target.value.replace(/\D/g, ""));
+                    patch({ oneloginAppId: n > 0 ? n : null });
+                  }}
+                  placeholder="—"
+                />
+              </Field>
+
               {/* ── maintainer / contact ─────────────────── */}
               <div>
                 <p className="label flex items-center gap-1.5">
@@ -415,6 +430,12 @@ export default function AdminAppsPage() {
                 <p className="mt-2 text-[11.5px] leading-relaxed text-ink-mute">{t.apps.maintainerHint}</p>
               </div>
 
+              {draft.oneloginAppId ? (
+              <div>
+                <p className="label">{t.apps.allowedRoles}</p>
+                <p className="text-[12.5px] leading-relaxed text-ink-soft">{t.apps.byOneloginHint}</p>
+              </div>
+              ) : (
               <div>
                 <p className="label">{t.apps.allowedRoles}</p>
                 <div className="grid gap-2 sm:grid-cols-2">
@@ -437,6 +458,7 @@ export default function AdminAppsPage() {
                 </div>
                 <p className="mt-2 text-[11.5px] text-ink-mute">{t.apps.allowedRolesHint}</p>
               </div>
+              )}
             </div>
 
             {/* ── live preview — the real card, so every layout is accurate ── */}

@@ -64,6 +64,9 @@ export interface PortalApp {
   /** Always open in a new tab, never inside the portal's frame — for apps that log in
    *  through Onelogin, whose login page refuses to be framed. */
   openInNewTab?: boolean;
+  /** The app's id in Onelogin. Set = Onelogin alone decides who sees the tile, and
+   *  `roles` is ignored; unset = portal roles decide, as before. */
+  oneloginAppId?: number | null;
   /** Central-identity authorization model (SSO + per-app roles/resources). */
   sso?: AppSso;
   resources?: AppResource[];

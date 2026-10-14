@@ -22,7 +22,7 @@ import {
 import { loadAssignments, pickDefaultAssignment } from "@/lib/assignments";
 import { portalRoleKeys } from "@/lib/onelogin-roles";
 import { checkSsoSession } from "@/lib/sso-session";
-import { getSupabase, isSupabaseConfigured } from "@/lib/supabase/client";
+import { authHeader, getSupabase, isSupabaseConfigured } from "@/lib/supabase/client";
 import type { Assignment, AuditEntry, Permission, PortalApp, PortalUser, Role } from "@/lib/types";
 import { uid } from "@/lib/utils";
 
@@ -42,6 +42,17 @@ interface SsoIdentity {
   /** GoodHR hats from Onelogin (two or more = choose) and the one being worn — set by the server */
   hats: { id: string; label: string; isPrimary: boolean; isActing: boolean }[];
   hat: string | null;
+}
+
+/** Onelogin app ids this person may open (see /api/onelogin/access) — null = unknown. */
+async function loadOneloginIds(): Promise<number[] | null> {
+  try {
+    const r = await fetch("/api/onelogin/access", { headers: await authHeader(), cache: "no-store" });
+    const body = (await r.json()) as { ids?: number[] | null };
+    return Array.isArray(body.ids) ? body.ids : null;
+  } catch {
+    return null;
+  }
 }
 
 async function loadSsoIdentity(): Promise<SsoIdentity | null> {
@@ -144,6 +155,8 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
   const [recents, setRecents] = useState<RecentEntry[]>([]);
   const [assignments, setAssignments] = useState<Assignment[]>([]);
   const [activeAssignmentId, setActiveAssignmentId] = useState<string | null>(null);
+  // Onelogin app ids this person may open — null until known (or Onelogin unreachable)
+  const [oneloginIds, setOneloginIds] = useState<number[] | null>(null);
 
   /* ── boot ─────────────────────────────────────────────── */
   useEffect(() => {
@@ -223,6 +236,17 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
     };
   }, [sessionUserEmail, ssoSelfHats]);
 
+  // asked per signed-in person, so switching accounts never keeps someone else's answer
+  useEffect(() => {
+    setOneloginIds(null);
+    if (!sessionUserEmail) return;
+    let alive = true;
+    loadOneloginIds().then((ids) => alive && setOneloginIds(ids));
+    return () => {
+      alive = false;
+    };
+  }, [sessionUserEmail]);
+
   const activeAssignment = useMemo(
     () => assignments.find((a) => a.id === activeAssignmentId) ?? null,
     [assignments, activeAssignmentId],
@@ -269,24 +293,29 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
   const canOpen = useCallback(
     (app: PortalApp) => {
       if (!currentRole) return false;
+      // Linked to Onelogin: its answer alone decides — for admins too, since an admin
+      // here isn't one there. Not known yet / unreachable = hidden, never everyone.
+      if (app.oneloginAppId) return oneloginIds?.includes(app.oneloginAppId) ?? false;
       if (can("app.manage")) return true;
       if (!currentRole.permissions.includes("app.launch")) return false;
       // empty = everyone on staff; a guest (คนนอก) only opens apps that name "guest"
       if (!app.roles.length) return activeRoleKeys.some((key) => key !== "guest");
       return app.roles.some((key) => activeRoleKeys.includes(key));
     },
-    [currentRole, activeRoleKeys, can],
+    [currentRole, activeRoleKeys, can, oneloginIds],
   );
 
   /* ── mutations ────────────────────────────────────────── */
 
   const reloadRights = useCallback(async () => {
-    const [identity, snapshot] = await Promise.all([
+    const [identity, snapshot, ids] = await Promise.all([
       loadSsoIdentity().catch(() => null),
       loadSnapshot().catch(() => null),
+      loadOneloginIds(),
     ]);
     setSso(identity);
     if (snapshot) setData(snapshot);
+    setOneloginIds(ids);
   }, []);
 
   // Changing apps, people or roles is risky (TODO §3): ask Onelogin live first
