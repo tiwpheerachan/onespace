@@ -374,6 +374,19 @@ export default function AdminAppsPage() {
                 />
               </Field>
 
+              <label className="flex cursor-pointer items-start gap-2.5">
+                <input
+                  type="checkbox"
+                  className="mt-0.5 h-4 w-4 accent-brand-500"
+                  checked={draft.openInNewTab ?? false}
+                  onChange={(e) => patch({ openInNewTab: e.target.checked })}
+                />
+                <span>
+                  <span className="text-[13px] font-medium text-ink">{t.apps.openInNewTab}</span>
+                  <span className="mt-0.5 block text-[11.5px] leading-relaxed text-ink-mute">{t.apps.openInNewTabHint}</span>
+                </span>
+              </label>
+
               {/* ── maintainer / contact ─────────────────── */}
               <div>
                 <p className="label flex items-center gap-1.5">

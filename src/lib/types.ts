@@ -61,6 +61,9 @@ export interface PortalApp {
   longDescription?: string;
   /** Who to contact about this app — shown with a profile on the card + detail. */
   maintainer?: AppMaintainer | null;
+  /** Always open in a new tab, never inside the portal's frame — for apps that log in
+   *  through Onelogin, whose login page refuses to be framed. */
+  openInNewTab?: boolean;
   /** Central-identity authorization model (SSO + per-app roles/resources). */
   sso?: AppSso;
   resources?: AppResource[];

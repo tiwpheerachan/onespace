@@ -22,7 +22,7 @@ interface Item {
 export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenChange: (v: boolean) => void }) {
   const router = useRouter();
   const { t, setLang, theme, setTheme } = usePrefs();
-  const { apps, canOpen, can } = usePortal();
+  const { apps, canOpen, can, registerLaunch } = usePortal();
   const [query, setQuery] = useState("");
   const [active, setActive] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -44,7 +44,11 @@ export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenCh
         label: a.name,
         hint: t.cat[a.category],
         icon: <AppLogo app={a} size={26} radius={8} />,
-        run: () => router.push(`/app/${a.id}`),
+        run: () => {
+          if (!a.openInNewTab) return router.push(`/app/${a.id}`);
+          registerLaunch(a);
+          window.open(a.url, "_blank", "noopener,noreferrer");
+        },
       }));
 
     const pages: Item[] = [

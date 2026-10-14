@@ -64,6 +64,11 @@ export default function AppViewerPage() {
   // the cases the header check can't see (unreachable, or per-path blocks).
   useEffect(() => {
     if (!app || !allowed) return;
+    // Reached by a direct link: don't even try the frame, just offer the new tab.
+    if (app.openInNewTab) {
+      setBlocked(true);
+      return;
+    }
     loadedRef.current = false;
     setLoading(true);
     setBlocked(false);
@@ -213,6 +218,7 @@ export default function AppViewerPage() {
           </div>
         )}
 
+        {!app.openInNewTab && (
         <iframe
           key={reloadKey}
           ref={frameRef}
@@ -227,6 +233,7 @@ export default function AppViewerPage() {
             setBlocked(false);
           }}
         />
+        )}
 
         {/* Cross-origin frame blocking can't be reliably detected once the browser
             renders its own error page, so once a frame is "loaded" we float a

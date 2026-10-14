@@ -41,6 +41,7 @@ export default function DashboardPage() {
     toggleFavourite,
     recents,
     clearRecents,
+    registerLaunch,
   } = usePortal();
 
   const [query, setQuery] = useState("");
@@ -73,8 +74,15 @@ export default function DashboardPage() {
     .map((r) => ({ app: apps.find((a) => a.id === r.appId), at: r.at }))
     .filter((r): r is { app: PortalApp; at: string } => Boolean(r.app));
 
-  // Open apps inside the portal's own framed viewer instead of a new tab.
+  // Open apps inside the portal's own framed viewer instead of a new tab — except
+  // apps flagged openInNewTab (Onelogin login refuses to be framed). window.open must
+  // run inside this click, or the popup blocker eats it, so it can't wait for the viewer.
   const launch = (app: PortalApp) => {
+    if (app.openInNewTab) {
+      registerLaunch(app);
+      window.open(app.url, "_blank", "noopener,noreferrer");
+      return;
+    }
     router.push(`/app/${app.id}`);
   };
 
