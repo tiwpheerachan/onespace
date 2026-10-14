@@ -1,11 +1,10 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { Boxes, ExternalLink, ImagePlus, KeyRound, Layers, Pencil, Plus, Search, Settings2, ShieldCheck, Trash2, Upload, UserRound, X } from "lucide-react";
+import { Boxes, ExternalLink, ImagePlus, Pencil, Plus, Search, ShieldCheck, Trash2, Upload, UserRound, X } from "lucide-react";
 import { useMemo, useRef, useState } from "react";
 import { AppLogo } from "@/components/AppLogo";
 import { AppTile } from "@/components/AppTile";
-import { SchemaTab, SsoTab } from "@/components/AppAuthzTabs";
 import { Confirm } from "@/components/Confirm";
 import { PageHeader } from "@/components/PageHeader";
 import { type DirectoryPerson, PersonSearch } from "@/components/PersonSearch";
@@ -14,8 +13,6 @@ import { usePortal } from "@/lib/data/store";
 import { usePrefs } from "@/lib/i18n/provider";
 import { APP_CATEGORIES, LOGO_SHAPES, type AppCategory, type AppMaintainer, type LogoShape, type AppStatus, type PortalApp } from "@/lib/types";
 import { cn, hexToRgba, initials, isVideoSrc, normalise, uid } from "@/lib/utils";
-
-type EditorTab = "general" | "sso" | "schema";
 
 const SWATCHES = [
   "#1f43e6", "#0d9488", "#7c3aed", "#e11d48", "#ea580c",
@@ -48,7 +45,6 @@ export default function AdminAppsPage() {
   const [query, setQuery] = useState("");
   const [draft, setDraft] = useState<PortalApp | null>(null);
   const [isNew, setIsNew] = useState(false);
-  const [tab, setTab] = useState<EditorTab>("general");
   const [pendingDelete, setPendingDelete] = useState<PortalApp | null>(null);
   const [coverError, setCoverError] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -64,13 +60,11 @@ export default function AdminAppsPage() {
   const openNew = () => {
     setDraft(blank(apps.length + 1));
     setIsNew(true);
-    setTab("general");
   };
 
   const openEdit = (app: PortalApp) => {
     setDraft({ ...app });
     setIsNew(false);
-    setTab("general");
   };
 
   const patch = (p: Partial<PortalApp>) => setDraft((d) => (d ? { ...d, ...p } : d));
@@ -257,30 +251,6 @@ export default function AdminAppsPage() {
       >
         {draft && (
           <div>
-            <div className="mb-5 flex gap-1 rounded-xl border border-line bg-canvas/60 p-1">
-              {([
-                { id: "general", label: t.sso.tabGeneral, icon: Settings2 },
-                { id: "sso", label: t.sso.tabSso, icon: KeyRound },
-                { id: "schema", label: t.sso.tabSchema, icon: Layers },
-              ] as { id: EditorTab; label: string; icon: typeof Settings2 }[]).map((tb) => (
-                <button
-                  key={tb.id}
-                  onClick={() => setTab(tb.id)}
-                  className={cn(
-                    "flex flex-1 items-center justify-center gap-2 rounded-lg px-3 py-2 text-[12.5px] font-semibold transition",
-                    tab === tb.id ? "bg-surface text-ink shadow-sm" : "text-ink-mute hover:text-ink-soft",
-                  )}
-                >
-                  <tb.icon className="h-4 w-4" />
-                  {tb.label}
-                </button>
-              ))}
-            </div>
-
-            {tab === "sso" && <SsoTab draft={draft} patch={patch} />}
-            {tab === "schema" && <SchemaTab draft={draft} patch={patch} />}
-
-            {tab === "general" && (
             <div className="grid gap-6 md:grid-cols-[1fr_260px]">
             <div className="space-y-4">
               <div className="grid gap-4 sm:grid-cols-[1fr_140px]">
@@ -619,7 +589,6 @@ export default function AdminAppsPage() {
               </div>
             </div>
           </div>
-            )}
           </div>
         )}
       </Modal>
