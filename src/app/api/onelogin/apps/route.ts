@@ -6,7 +6,8 @@ import { requestUser } from "@/lib/supabase/request-user";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-/** One tile: an app Onelogin controls centrally that this person can open. */
+/** One tile: an app Onelogin controls centrally that this person can open.
+ *  The look fields (colour … badge) let us draw the card exactly like Onelogin's own launcher. */
 export interface OneloginApp {
   id: number;
   name: string;
@@ -15,6 +16,18 @@ export interface OneloginApp {
   icon: string;
   /** our own /api/onelogin/logo/<id>?v=<hash> — null = no logo set in Onelogin */
   logo: string | null;
+  /** our own /api/onelogin/cover/<id>?v=<hash> — null = no cover, fall back to the colour hero */
+  cover: string | null;
+  /** app colour (hex), already resolved by Onelogin */
+  color: string;
+  /** rounded | circle | wide */
+  logoShape: string;
+  /** health: true ok · false down · null unknown */
+  status: boolean | null;
+  ownerName: string | null;
+  /** external avatar URL (Lark/Google) — safe to use directly */
+  ownerAvatar: string | null;
+  badge: string;
 }
 
 /**
@@ -54,7 +67,18 @@ export async function GET(req: NextRequest) {
     // only http(s) links reach an <a href> — a stray javascript: URL must never become a tile
     const apps = (body.apps ?? [])
       .filter((a) => /^https?:\/\//i.test(a.url))
-      .map((a) => ({ ...a, logo: ownLogoPath(a.logo) }));
+      .map((a) => ({
+        ...a,
+        logo: ownLogoPath(a.logo),
+        cover: ownCoverPath(a.cover),
+        // defensive defaults in case Onelogin hasn't shipped the look fields yet
+        color: a.color || "#3b7bff",
+        logoShape: a.logoShape || "rounded",
+        status: a.status ?? null,
+        ownerName: a.ownerName ?? null,
+        ownerAvatar: a.ownerAvatar ?? null,
+        badge: a.badge || "SSO",
+      }));
     return NextResponse.json({ apps });
   } catch (e) {
     console.error("[sso] apps/mine error", e);
@@ -72,4 +96,11 @@ function ownLogoPath(logo: string | null | undefined): string | null {
   if (!logo) return null;
   const m = /\/api\/v1\/apps\/logo\/(\d+)\?v=([0-9a-f]{8})$/.exec(logo);
   return m ? `/api/onelogin/logo/${m[1]}?v=${m[2]}` : null;
+}
+
+/** Same idea as ownLogoPath, for the cover image (also needs our API key). */
+function ownCoverPath(cover: string | null | undefined): string | null {
+  if (!cover) return null;
+  const m = /\/api\/v1\/apps\/cover\/(\d+)\?v=([0-9a-f]{8})$/.exec(cover);
+  return m ? `/api/onelogin/cover/${m[1]}?v=${m[2]}` : null;
 }

@@ -22,7 +22,8 @@ import { AppTile } from "@/components/AppTile";
 import { Badge, EmptyState, SectionTitle } from "@/components/ui";
 import { usePortal } from "@/lib/data/store";
 import { usePrefs } from "@/lib/i18n/provider";
-import { isOneloginApp, openOneloginApp, useOneloginApps } from "@/lib/onelogin-apps";
+import { useOneloginApps } from "@/lib/onelogin-apps";
+import { OneloginTile } from "@/components/OneloginTile";
 import { APP_CATEGORIES, type AppCategory, type PortalApp } from "@/lib/types";
 import { cn, normalise, relativeTime } from "@/lib/utils";
 
@@ -54,28 +55,24 @@ export default function DashboardPage() {
   const hour = new Date().getHours();
   const greeting = hour < 12 ? t.dash.morning : hour < 18 ? t.dash.afternoon : t.dash.evening;
 
-  // Onelogin's apps sit in the same grid, after ours. They have no category of
-  // their own, so a category chip hides them; the search still finds them.
+  // Onelogin apps show in their own section (same card Onelogin uses), not mixed
+  // into the catalogue grid — so a tile looks identical in both places.
   const oneloginApps = useOneloginApps();
   const visible = useMemo(() => {
     const q = normalise(query.trim());
-    const matches = (a: PortalApp) =>
-      q ? normalise(`${a.name} ${a.description} ${a.owner} ${a.category} ${a.shortName}`).includes(q) : true;
-    return [
-      ...apps
-        .filter((a) => (category === "all" ? true : a.category === category))
-        .filter(matches)
-        .sort((a, b) => {
-          const fa = favourites.includes(a.id) ? 0 : 1;
-          const fb = favourites.includes(b.id) ? 0 : 1;
-          return fa - fb || a.sortOrder - b.sortOrder;
-        }),
-      ...(category === "all" ? oneloginApps.filter(matches) : []),
-    ];
-  }, [apps, oneloginApps, category, query, favourites]);
-  const allCount = apps.length + oneloginApps.length;
+    return apps
+      .filter((a) => (category === "all" ? true : a.category === category))
+      .filter((a) =>
+        q ? normalise(`${a.name} ${a.description} ${a.owner} ${a.category} ${a.shortName}`).includes(q) : true,
+      )
+      .sort((a, b) => {
+        const fa = favourites.includes(a.id) ? 0 : 1;
+        const fb = favourites.includes(b.id) ? 0 : 1;
+        return fa - fb || a.sortOrder - b.sortOrder;
+      });
+  }, [apps, category, query, favourites]);
 
-  const accessible = [...apps.filter(canOpen), ...oneloginApps];
+  const accessible = apps.filter(canOpen);
   const pinned = apps.filter((a) => favourites.includes(a.id));
   const recentApps = recents
     .map((r) => ({ app: apps.find((a) => a.id === r.appId), at: r.at }))
@@ -247,6 +244,35 @@ export default function DashboardPage() {
         </section>
       )}
 
+      {/* ── your Onelogin apps ─────────────────────────────
+          Live from Onelogin (POST /api/v1/apps/mine), drawn with the very card
+          Onelogin uses so a tile looks identical in both places. Own section —
+          not mixed into the catalogue grid, which uses our AppTile. */}
+      {oneloginApps.length > 0 && (
+        <section>
+          <SectionTitle
+            icon={<LayoutGrid className="h-4 w-4" />}
+            title={t.dash.oneloginSection}
+            count={oneloginApps.length}
+          />
+          <div className="onelogin-grid">
+            {oneloginApps.map((a) => (
+              <OneloginTile
+                key={a.id}
+                app={a}
+                labels={{
+                  open: t.dash.launch,
+                  maintainedBy: t.dash.oneloginBy,
+                  stUp: t.dash.oneloginUp,
+                  stDown: t.dash.oneloginDown,
+                  stReady: t.dash.oneloginReady,
+                }}
+              />
+            ))}
+          </div>
+        </section>
+      )}
+
       {/* ── catalogue ──────────────────────────────────── */}
       <section>
         <div className="mb-5 flex flex-col gap-3">
@@ -283,7 +309,7 @@ export default function DashboardPage() {
               className={cn("chip", category === "all" && "chip-active")}
             >
               {t.dash.categoryAll}
-              <span className="opacity-60">{allCount}</span>
+              <span className="opacity-60">{apps.length}</span>
             </button>
             {APP_CATEGORIES.map((c) => {
               const n = apps.filter((a) => a.category === c).length;
@@ -305,44 +331,31 @@ export default function DashboardPage() {
         <SectionTitle
           icon={<LayoutGrid className="h-4 w-4" />}
           title={t.dash.allApps}
-          count={`${visible.length} ${t.common.of} ${allCount}`}
+          count={`${visible.length} ${t.common.of} ${apps.length}`}
         />
 
         {visible.length === 0 ? (
           <EmptyState icon={<SearchX className="h-6 w-6" />} title={t.dash.empty} body={t.dash.emptyHint} />
         ) : view === "grid" ? (
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
-            {visible.map((app, i) =>
-              isOneloginApp(app) ? (
-                <AppTile
-                  key={app.id}
-                  app={app}
-                  index={i}
-                  allowed
-                  pinned={false}
-                  caption={t.dash.oneloginCaption}
-                  onLaunch={() => openOneloginApp(app)}
-                />
-              ) : (
-                <AppTile
-                  key={app.id}
-                  app={app}
-                  index={i}
-                  allowed={canOpen(app)}
-                  pinned={favourites.includes(app.id)}
-                  onPin={() => toggleFavourite(app.id)}
-                  onLaunch={() => launch(app)}
-                  onDetails={() => setDetailApp(app)}
-                />
-              ),
-            )}
+            {visible.map((app, i) => (
+              <AppTile
+                key={app.id}
+                app={app}
+                index={i}
+                allowed={canOpen(app)}
+                pinned={favourites.includes(app.id)}
+                onPin={() => toggleFavourite(app.id)}
+                onLaunch={() => launch(app)}
+                onDetails={() => setDetailApp(app)}
+              />
+            ))}
           </div>
         ) : (
           <div className="overflow-hidden rounded-2xl border border-line bg-surface">
             {visible.map((app, i) => {
-              const fromOnelogin = isOneloginApp(app);
-              const allowed = fromOnelogin || canOpen(app);
-              const open = () => (fromOnelogin ? openOneloginApp(app) : allowed ? launch(app) : setDetailApp(app));
+              const allowed = canOpen(app);
+              const open = () => (allowed ? launch(app) : setDetailApp(app));
               return (
                 <motion.div
                   key={app.id}
@@ -370,40 +383,36 @@ export default function DashboardPage() {
                     <p className="truncate text-[12px] text-ink-mute">{app.description}</p>
                   </div>
                   <span className="hidden w-32 shrink-0 text-[12px] text-ink-mute md:block">
-                    {fromOnelogin ? "Onelogin" : t.cat[app.category]}
+                    {t.cat[app.category]}
                   </span>
                   <span className="hidden w-24 shrink-0 truncate font-mono text-[11px] text-ink-mute lg:block">
                     {app.version && `v${app.version}`}
                   </span>
-                  {!fromOnelogin && (
-                    <>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          toggleFavourite(app.id);
-                        }}
-                        title={favourites.includes(app.id) ? t.dash.unpin : t.dash.pin}
-                        className={cn(
-                          "rounded-lg p-1.5 transition",
-                          favourites.includes(app.id)
-                            ? "text-brand-600"
-                            : "text-ink-mute opacity-0 group-hover:opacity-100",
-                        )}
-                      >
-                        <Pin className="h-4 w-4" />
-                      </button>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setDetailApp(app);
-                        }}
-                        title={t.dash.details}
-                        className="shrink-0 rounded-lg p-1.5 text-ink-mute transition hover:bg-surface hover:text-ink"
-                      >
-                        <Info className="h-4 w-4" />
-                      </button>
-                    </>
-                  )}
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      toggleFavourite(app.id);
+                    }}
+                    title={favourites.includes(app.id) ? t.dash.unpin : t.dash.pin}
+                    className={cn(
+                      "rounded-lg p-1.5 transition",
+                      favourites.includes(app.id)
+                        ? "text-brand-600"
+                        : "text-ink-mute opacity-0 group-hover:opacity-100",
+                    )}
+                  >
+                    <Pin className="h-4 w-4" />
+                  </button>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setDetailApp(app);
+                    }}
+                    title={t.dash.details}
+                    className="shrink-0 rounded-lg p-1.5 text-ink-mute transition hover:bg-surface hover:text-ink"
+                  >
+                    <Info className="h-4 w-4" />
+                  </button>
                   {allowed ? (
                     <span className="hidden shrink-0 items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[12px] font-semibold text-brand-600 sm:flex">
                       {t.dash.launch}
