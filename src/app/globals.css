@@ -125,3 +125,78 @@ body {
     transition-duration: .001ms !important;
   }
 }
+
+/* ───────────────────────────────────────────────────────────────────────────
+   Onelogin app tiles — a verbatim port of Onelogin's launcher card (LaunchCard),
+   so the same app looks identical here and in Onelogin. The theme tokens are
+   self-scoped under .lcard (ONE SPACE uses Tailwind tokens, not these CSS vars),
+   with a .dark override; --ac (app colour) is set inline per card.
+   ─────────────────────────────────────────────────────────────────────────── */
+.onelogin-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(218px, 1fr)); gap: 14px; }
+
+.lcard {
+  --surface: #ffffff; --surface-2: #f4f2fb; --line: #e6e3f2; --ink: #1a1826; --muted: #615d76;
+  --sh-1: 0 1px 2px rgba(28, 28, 33, 0.04); --t-xs: 0.72rem; --t-sm: 0.825rem; --t-base: 0.9rem;
+  position: relative; display: flex; flex-direction: column; border-radius: 16px; overflow: hidden;
+  color: var(--ink); border: 1px solid var(--line); box-shadow: var(--sh-1); background: var(--surface);
+  transition: transform .2s cubic-bezier(.4, 0, .2, 1), box-shadow .2s ease, border-color .2s ease; }
+.dark .lcard {
+  --surface: #1a1726; --surface-2: #211d30; --line: #2c2740; --ink: #efecf7; --muted: #a8a2bd;
+  --sh-1: 0 1px 2px rgba(0, 0, 0, 0.4); }
+.lcard:hover { transform: translateY(-4px); box-shadow: 0 20px 38px -20px color-mix(in srgb, var(--ac) 58%, transparent);
+  border-color: color-mix(in srgb, var(--ac) 38%, var(--line)); }
+.lc-stretch { position: absolute; inset: 0; z-index: 1; border-radius: inherit; }
+
+.lc-hero { position: relative; z-index: 2; pointer-events: none; height: 106px; padding: 12px; overflow: hidden;
+  display: flex; align-items: flex-end;
+  background: linear-gradient(145deg, var(--ac), color-mix(in srgb, var(--ac) 90%, #000)); }
+.lc-cover-img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; z-index: 0; transition: transform .4s ease; }
+.lcard:hover .lc-cover-img { transform: scale(1.05); }
+.lc-scrim { position: absolute; inset: 0; z-index: 1;
+  background: linear-gradient(180deg, rgba(0,0,0,.14) 0%, transparent 32%, rgba(0,0,0,.42) 100%); }
+.lc-status, .lc-badge, .lc-hero-foot { z-index: 2; }
+.lc-status { position: absolute; top: 12px; left: 12px; display: inline-flex; align-items: center; gap: 6px;
+  padding: 4px 10px; border-radius: 999px; font-size: 10.5px; font-weight: 700; color: #fff;
+  background: color-mix(in srgb, #000 22%, transparent); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, #fff 22%, transparent); }
+.lc-status i { width: 8px; height: 8px; border-radius: 50%; background: #35d07f; box-shadow: 0 0 0 3px color-mix(in srgb, #35d07f 32%, transparent); }
+.lc-status.down i { background: #ff5c72; box-shadow: 0 0 0 3px color-mix(in srgb, #ff5c72 32%, transparent); }
+.lc-status.ready i { background: #e2e8f0; box-shadow: 0 0 0 3px color-mix(in srgb, #fff 24%, transparent); }
+.lc-badge { position: absolute; top: 12px; right: 12px; display: inline-flex; align-items: center;
+  padding: 4px 9px; border-radius: 999px; font-size: 9.5px; font-weight: 800; letter-spacing: .03em; color: #fff;
+  background: color-mix(in srgb, #000 22%, transparent); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, #fff 22%, transparent); }
+.lc-hero-foot { display: flex; align-items: center; gap: 10px; width: 100%; min-width: 0; }
+.lc-logo { flex: none; width: 46px; height: 46px; display: grid; place-items: center; overflow: hidden;
+  color: #fff; font-weight: 800; font-size: 14px; border-radius: 13px;
+  background: color-mix(in srgb, #fff 20%, transparent); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, #fff 30%, transparent), 0 8px 20px -8px color-mix(in srgb, #000 55%, transparent); }
+.lc-logo.s-circle { border-radius: 50%; }
+.lc-logo.s-wide { width: 66px; border-radius: 12px; }
+.lc-logo img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.lc-logo.s-wide img { object-fit: contain; background: #fff; }
+.lc-title { display: flex; flex-direction: column; min-width: 0; }
+.lc-title b { color: #fff; font-weight: 800; font-size: var(--t-base); line-height: 1.25; overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap; text-shadow: 0 1px 8px rgba(0,0,0,.28); }
+.lc-title span { color: color-mix(in srgb, #fff 80%, transparent); font-size: var(--t-xs); overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap; text-shadow: 0 1px 6px rgba(0,0,0,.3); }
+
+.lc-body { position: relative; z-index: 2; pointer-events: none; flex: 1; display: flex; flex-direction: column; gap: 9px; padding: 13px; }
+.lc-desc { margin: 0; font-size: var(--t-sm); color: var(--muted); line-height: 1.55;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.lc-owner { display: flex; align-items: center; gap: 9px; min-width: 0; font-size: var(--t-sm); color: var(--muted); }
+.lc-ava { flex: none; width: 26px; height: 26px; border-radius: 50%; object-fit: cover; display: grid; place-items: center;
+  background: var(--surface-2); color: var(--muted); font-size: 10px; font-weight: 800; }
+.lc-owner-t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lc-owner-t b { color: var(--ink); font-weight: 700; }
+.lc-div { height: 1px; background: var(--line); margin: 2px 0; }
+.lc-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: auto; }
+.lc-fab { flex: none; width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; color: #fff;
+  background: linear-gradient(135deg, var(--ac), color-mix(in srgb, var(--ac) 60%, #000));
+  box-shadow: 0 10px 22px -8px color-mix(in srgb, var(--ac) 80%, transparent);
+  transition: transform .2s cubic-bezier(.34, 1.3, .64, 1), box-shadow .2s ease; }
+.lc-fab svg { transition: transform .2s ease; }
+.lcard:hover .lc-fab { transform: translateY(-2px) scale(1.07);
+  box-shadow: 0 16px 30px -9px color-mix(in srgb, var(--ac) 72%, transparent); }
+.lcard:hover .lc-fab svg { transform: translate(1px, -1px); }
+@media (prefers-reduced-motion: reduce) { .lcard, .lc-cover-img, .lc-fab, .lc-fab svg { transition: none; } }
