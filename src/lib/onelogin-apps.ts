@@ -18,13 +18,23 @@ export function useOneloginApps(): OneloginApp[] {
   const [apps, setApps] = useState<OneloginApp[]>([]);
   useEffect(() => {
     let live = true;
-    (async () => {
+    const load = async () => {
       const r = await fetch("/api/onelogin/apps", { headers: await authHeader() }).catch(() => null);
       const body = r?.ok ? ((await r.json().catch(() => null)) as { apps?: OneloginApp[] } | null) : null;
       if (live) setApps(body?.apps ?? []);
-    })();
+    };
+    // ดึงซ้ำเมื่อกลับมาที่แท็บ/หน้าต่าง — เผยแพร่/ยกเลิกใน Onelogin จะ reflect เองโดยไม่ต้องรีเฟรช
+    // (รายการนี้มาจาก /api/v1/apps/mine แบบสด แค่ก่อนหน้านี้ hook ดึงครั้งเดียวตอน mount)
+    const onVisible = () => {
+      if (document.visibilityState === "visible") load();
+    };
+    load();
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("focus", load);
     return () => {
       live = false;
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("focus", load);
     };
   }, []);
   return apps;
