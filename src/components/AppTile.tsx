@@ -13,18 +13,22 @@ interface Props {
   app: PortalApp;
   allowed: boolean;
   pinned: boolean;
-  onPin: () => void;
+  /** omitted = no pin button (Onelogin tiles aren't in our catalogue, so they can't be pinned) */
+  onPin?: () => void;
   onLaunch: () => void;
-  onDetails: () => void;
+  /** omitted = no details button */
+  onDetails?: () => void;
+  /** replaces the "category · version" line */
+  caption?: string;
   index?: number;
 }
 
-export function AppTile({ app, allowed, pinned, onPin, onLaunch, onDetails, index = 0 }: Props) {
+export function AppTile({ app, allowed, pinned, onPin, onLaunch, onDetails, caption, index = 0 }: Props) {
   const { t } = usePrefs();
 
   // The whole card is the primary target: open the app when allowed, otherwise
   // fall through to the detail sheet so a locked tile still explains itself.
-  const activate = () => (allowed ? onLaunch() : onDetails());
+  const activate = () => (allowed ? onLaunch() : onDetails?.());
 
   const stop =
     (fn: () => void) =>
@@ -98,7 +102,7 @@ export function AppTile({ app, allowed, pinned, onPin, onLaunch, onDetails, inde
         <div className="absolute inset-x-0 top-0 flex items-start justify-between p-3">
           {/* system status only matters to someone who can open it — a green "operational" beside "no access" reads as a contradiction */}
           {allowed && <Badge tone={app.status}>{t.status[app.status]}</Badge>}
-          <button
+          {onPin && <button
             onClick={stop(onPin)}
             title={pinned ? t.dash.unpin : t.dash.pin}
             className={cn(
@@ -109,7 +113,7 @@ export function AppTile({ app, allowed, pinned, onPin, onLaunch, onDetails, inde
             )}
           >
             {pinned ? <PinOff className="h-4 w-4" /> : <Pin className="h-4 w-4" />}
-          </button>
+          </button>}
         </div>
 
         {/* caption over the blurred base — logo (the app "profile") sits larger */}
@@ -123,7 +127,7 @@ export function AppTile({ app, allowed, pinned, onPin, onLaunch, onDetails, inde
               {!allowed && <Lock className="h-3 w-3 shrink-0 text-white/80" />}
             </div>
             <p className="truncate text-[11px] font-medium text-white/80">
-              {t.cat[app.category]} · v{app.version}
+              {caption ?? `${t.cat[app.category]} · v${app.version}`}
             </p>
           </div>
         </div>
@@ -147,26 +151,26 @@ export function AppTile({ app, allowed, pinned, onPin, onLaunch, onDetails, inde
 
         {/* footer */}
         <div className="mt-4 flex items-center justify-between gap-2 border-t border-line pt-3.5">
-          <button
+          {onDetails && <button
             onClick={stop(onDetails)}
             title={t.dash.details}
             className="flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-[12px] font-semibold text-ink-mute transition hover:bg-canvas hover:text-ink"
           >
             <Info className="h-3.5 w-3.5" />
             <span>{t.dash.details}</span>
-          </button>
+          </button>}
 
           {allowed ? (
             <button
               onClick={stop(onLaunch)}
               title={t.dash.launch}
-              className="flex h-9 w-9 items-center justify-center rounded-full text-white shadow-sm transition-all duration-300 group-hover:scale-110 hover:rotate-6 active:scale-95"
+              className="ml-auto flex h-9 w-9 items-center justify-center rounded-full text-white shadow-sm transition-all duration-300 group-hover:scale-110 hover:rotate-6 active:scale-95"
               style={{ background: app.color, boxShadow: `0 8px 20px -8px ${hexToRgba(app.color, 0.9)}` }}
             >
               <ArrowUpRight className="h-4 w-4" />
             </button>
           ) : (
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-canvas px-3 py-1.5 text-[12px] font-semibold text-ink-mute">
+            <span className="ml-auto inline-flex items-center gap-1.5 rounded-full bg-canvas px-3 py-1.5 text-[12px] font-semibold text-ink-mute">
               <Lock className="h-3.5 w-3.5" />
               {t.dash.locked}
             </span>
