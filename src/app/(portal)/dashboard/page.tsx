@@ -363,7 +363,7 @@ export default function DashboardPage() {
                   pinned={favourites.includes(app.id)}
                   onPin={ol ? undefined : () => toggleFavourite(app.id)}
                   onLaunch={() => launch(app)}
-                  onDetails={ol ? undefined : () => setDetailApp(app)}
+                  onDetails={() => setDetailApp(app)}
                   caption={ol ? app.url.replace(/^https?:\/\//, "").replace(/\/$/, "") : undefined}
                 />
               );
@@ -424,18 +424,16 @@ export default function DashboardPage() {
                       <Pin className="h-4 w-4" />
                     </button>
                   )}
-                  {!ol && (
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setDetailApp(app);
-                      }}
-                      title={t.dash.details}
-                      className="shrink-0 rounded-lg p-1.5 text-ink-mute transition hover:bg-surface hover:text-ink"
-                    >
-                      <Info className="h-4 w-4" />
-                    </button>
-                  )}
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setDetailApp(app);
+                    }}
+                    title={t.dash.details}
+                    className="shrink-0 rounded-lg p-1.5 text-ink-mute transition hover:bg-surface hover:text-ink"
+                  >
+                    <Info className="h-4 w-4" />
+                  </button>
                   {allowed ? (
                     <span className="hidden shrink-0 items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[12px] font-semibold text-brand-600 sm:flex">
                       {t.dash.launch}
@@ -456,7 +454,7 @@ export default function DashboardPage() {
 
       <AppDetail
         app={detailApp}
-        allowed={detailApp ? canOpen(detailApp) : false}
+        allowed={detailApp ? isOnelogin(detailApp) || canOpen(detailApp) : false}
         roles={roles}
         onClose={() => setDetailApp(null)}
         onLaunch={(a) => {
