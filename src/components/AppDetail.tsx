@@ -61,6 +61,10 @@ export function AppDetail({
 }) {
   const { t, locale } = usePrefs();
 
+  // ไทล์ Onelogin (id "onelogin-*") ไม่มีหมวด/เวอร์ชัน/วันลงทะเบียน/ขอบเขตสิทธิ์จริง
+  // (มันอยู่ที่ Onelogin ไม่ใช่แคตตาล็อกเรา) — ซ่อนแถวพวกนั้น ไม่งั้นจะโชว์ค่าปลอม
+  const ol = typeof app?.id === "string" && app.id.startsWith("onelogin-");
+
   const roleNames = app?.roles.length
     ? app.roles.map((k) => roles.find((r) => r.key === k)?.name ?? k)
     : null;
@@ -70,7 +74,7 @@ export function AppDetail({
       open={Boolean(app)}
       onClose={onClose}
       title={app?.name ?? ""}
-      subtitle={app ? `${t.cat[app.category]} · v${app.version}` : undefined}
+      subtitle={app ? (ol ? hostOf(app.url) : `${t.cat[app.category]} · v${app.version}`) : undefined}
       width="max-w-xl"
       footer={
         app && (
@@ -197,18 +201,24 @@ export function AppDetail({
 
           {/* facts */}
           <div className="grid gap-2.5 sm:grid-cols-2">
-            <Row icon={<Tag className="h-4 w-4" />} label={t.common.category}>
-              {t.cat[app.category]}
-            </Row>
+            {!ol && (
+              <Row icon={<Tag className="h-4 w-4" />} label={t.common.category}>
+                {t.cat[app.category]}
+              </Row>
+            )}
             <Row icon={<Building2 className="h-4 w-4" />} label={t.common.owner}>
               {app.owner || "—"}
             </Row>
-            <Row icon={<GitBranch className="h-4 w-4" />} label={t.common.version}>
-              <span className="font-mono tabular-nums">v{app.version}</span>
-            </Row>
-            <Row icon={<CalendarClock className="h-4 w-4" />} label={t.dash.registered}>
-              {formatDateTime(app.createdAt, locale) ?? "—"}
-            </Row>
+            {!ol && (
+              <Row icon={<GitBranch className="h-4 w-4" />} label={t.common.version}>
+                <span className="font-mono tabular-nums">v{app.version}</span>
+              </Row>
+            )}
+            {!ol && (
+              <Row icon={<CalendarClock className="h-4 w-4" />} label={t.dash.registered}>
+                {formatDateTime(app.createdAt, locale) ?? "—"}
+              </Row>
+            )}
             <Row icon={<Globe className="h-4 w-4" />} label={t.common.url}>
               <a
                 href={app.url}
@@ -220,24 +230,26 @@ export function AppDetail({
                 {hostOf(app.url)}
               </a>
             </Row>
-            <Row icon={<ShieldCheck className="h-4 w-4" />} label={t.dash.accessScope}>
-              {roleNames ? (
-                <span className="flex flex-wrap gap-1">
-                  {roleNames.map((name) => (
-                    <span
-                      key={name}
-                      className="rounded-md bg-canvas px-1.5 py-0.5 text-[11px] font-semibold text-ink-soft"
-                    >
-                      {name}
-                    </span>
-                  ))}
-                </span>
-              ) : (
-                <span className={cn("text-[13px]", "text-emerald-600 dark:text-emerald-400")}>
-                  {t.dash.everyone}
-                </span>
-              )}
-            </Row>
+            {!ol && (
+              <Row icon={<ShieldCheck className="h-4 w-4" />} label={t.dash.accessScope}>
+                {roleNames ? (
+                  <span className="flex flex-wrap gap-1">
+                    {roleNames.map((name) => (
+                      <span
+                        key={name}
+                        className="rounded-md bg-canvas px-1.5 py-0.5 text-[11px] font-semibold text-ink-soft"
+                      >
+                        {name}
+                      </span>
+                    ))}
+                  </span>
+                ) : (
+                  <span className={cn("text-[13px]", "text-emerald-600 dark:text-emerald-400")}>
+                    {t.dash.everyone}
+                  </span>
+                )}
+              </Row>
+            )}
           </div>
         </div>
       )}
