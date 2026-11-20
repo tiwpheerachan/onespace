@@ -58,6 +58,10 @@ export function employmentMeta(e: Employment | null | undefined) {
     onelogin_phase: phase,
     onelogin_clearing_until: phase === "clearing" ? (e?.clearing_until ?? null) : null,
     onelogin_checked_at: new Date().toISOString(),
+    // Display-only employment facts (GoodHR) for the Settings profile card.
+    onelogin_employee_id: e?.employee_id ?? null,
+    onelogin_last_working_date: e?.last_working_date ?? null,
+    onelogin_access_end_date: e?.access_end_date ?? null,
   };
 }
 

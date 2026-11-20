@@ -43,6 +43,13 @@ interface SsoIdentity {
   /** GoodHR hats from Onelogin (two or more = choose) and the one being worn — set by the server */
   hats: { id: string; label: string; isPrimary: boolean; isActing: boolean }[];
   hat: string | null;
+  /** Display-only profile / employment facts (Onelogin · GoodHR). "" / null = not synced yet. */
+  title: string;
+  loginMethod: string;
+  employeeId: string;
+  lastWorkingDate: string | null;
+  accessEndDate: string | null;
+  createdAt: string | null;
 }
 
 /** Onelogin app ids this person may open (see /api/onelogin/access) — null = unknown. */
@@ -65,7 +72,14 @@ async function loadSsoIdentity(): Promise<SsoIdentity | null> {
   const roles = user?.app_metadata?.onelogin_roles;
   if (!user?.email || !Array.isArray(roles)) return null;
   const meta = user.user_metadata ?? {};
-  const profile = (meta.profile ?? {}) as { avatar_url?: string; department?: string; user_type?: string };
+  const profile = (meta.profile ?? {}) as {
+    avatar_url?: string;
+    department?: string;
+    user_type?: string;
+    title?: string;
+    login_method?: string;
+  };
+  const am = user.app_metadata;
   return {
     email: user.email.toLowerCase(),
     name: String(meta.name || user.email),
@@ -73,12 +87,16 @@ async function loadSsoIdentity(): Promise<SsoIdentity | null> {
     department: profile.department ?? "",
     roleKeys: portalRoleKeys(roles),
     external: profile.user_type === "guest",
-    phase: user.app_metadata.onelogin_phase === "clearing" || user.app_metadata.onelogin_phase === "normal"
-      ? user.app_metadata.onelogin_phase
-      : null,
-    clearingUntil: user.app_metadata.onelogin_clearing_until ?? null,
-    hats: Array.isArray(user.app_metadata.onelogin_hats) ? user.app_metadata.onelogin_hats : [],
-    hat: typeof user.app_metadata.onelogin_hat === "string" ? user.app_metadata.onelogin_hat : null,
+    phase: am.onelogin_phase === "clearing" || am.onelogin_phase === "normal" ? am.onelogin_phase : null,
+    clearingUntil: am.onelogin_clearing_until ?? null,
+    hats: Array.isArray(am.onelogin_hats) ? am.onelogin_hats : [],
+    hat: typeof am.onelogin_hat === "string" ? am.onelogin_hat : null,
+    title: profile.title ?? "",
+    loginMethod: profile.login_method ?? "",
+    employeeId: typeof am.onelogin_employee_id === "string" ? am.onelogin_employee_id : "",
+    lastWorkingDate: am.onelogin_last_working_date ?? null,
+    accessEndDate: am.onelogin_access_end_date ?? null,
+    createdAt: user.created_at ?? null,
   };
 }
 
@@ -104,6 +122,8 @@ interface PortalValue extends PortalSnapshot {
   currentRole: Role | null;
   /** signed in through Onelogin (shows the link back to its app list) */
   viaSso: boolean;
+  /** Full Onelogin identity for display (Settings profile card); null when not signed in via SSO. */
+  ssoProfile: SsoIdentity | null;
   /** an outside person (Onelogin profile.user_type = guest) — badged so staff can tell */
   isExternal: boolean;
   /** set while a resigning person is clearing their work — read-only until then */
@@ -656,6 +676,7 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
     currentUser,
     currentRole,
     viaSso: ssoSelf,
+    ssoProfile: ssoSelf ? sso : null,
     isExternal: ssoSelf && Boolean(sso?.external),
     clearingUntil: clearing ? (sso?.clearingUntil ?? null) : null,
     assignments,
