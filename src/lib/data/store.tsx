@@ -6,6 +6,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import {
@@ -127,6 +128,9 @@ interface PortalValue extends PortalSnapshot {
   toggleFavourite: (appId: string) => void;
   recents: RecentEntry[];
   registerLaunch: (app: PortalApp) => void;
+  /** Open in another tab (Onelogin / external app): logs the launch and banks the
+   *  time until the portal regains focus. Use instead of registerLaunch there. */
+  trackExternalLaunch: (app: PortalApp) => void;
   registerUsage: (app: PortalApp, seconds: number) => void;
   clearRecents: () => void;
 
@@ -574,11 +578,15 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
 
   const registerLaunch = useCallback(
     (app: PortalApp) => {
-      setRecents((prev) => {
-        const next = [{ appId: app.id, at: new Date().toISOString() }, ...prev.filter((r) => r.appId !== app.id)].slice(0, 8);
-        window.localStorage.setItem("nexus.recents", JSON.stringify(next));
-        return next;
-      });
+      // Onelogin apps live outside our catalogue (id "onelogin-*"), so the recents
+      // list — which resolves ids against `apps` — can't show them; only log.
+      if (!String(app.id).startsWith("onelogin-")) {
+        setRecents((prev) => {
+          const next = [{ appId: app.id, at: new Date().toISOString() }, ...prev.filter((r) => r.appId !== app.id)].slice(0, 8);
+          window.localStorage.setItem("nexus.recents", JSON.stringify(next));
+          return next;
+        });
+      }
       log("app.launch", app.name);
     },
     [log],
@@ -590,11 +598,38 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
   const registerUsage = useCallback(
     (app: PortalApp, seconds: number) => {
       const s = Math.round(seconds);
-      if (s < 3) return; // ignore accidental blips
+      if (s < 3 || s > 4 * 3600) return; // ignore blips and tabs left open all day
       log(`app.usage:${s}`, app.name);
     },
     [log],
   );
+
+  // Apps that open in another tab (Onelogin / external) can't be timed from inside
+  // an iframe. Instead record the launch now and bank the elapsed time when the
+  // portal tab regains focus — a good-enough proxy for time spent in the app.
+  const pendingExternal = useRef<{ app: PortalApp; at: number } | null>(null);
+  const trackExternalLaunch = useCallback(
+    (app: PortalApp) => {
+      registerLaunch(app);
+      pendingExternal.current = { app, at: Date.now() };
+    },
+    [registerLaunch],
+  );
+  useEffect(() => {
+    const flush = () => {
+      if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
+      const p = pendingExternal.current;
+      if (!p) return;
+      pendingExternal.current = null;
+      registerUsage(p.app, (Date.now() - p.at) / 1000); // registerUsage drops blips / overlong
+    };
+    window.addEventListener("focus", flush);
+    document.addEventListener("visibilitychange", flush);
+    return () => {
+      window.removeEventListener("focus", flush);
+      document.removeEventListener("visibilitychange", flush);
+    };
+  }, [registerUsage]);
 
   const clearRecents = useCallback(() => {
     setRecents([]);
@@ -637,6 +672,7 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
     toggleFavourite,
     recents,
     registerLaunch,
+    trackExternalLaunch,
     registerUsage,
     clearRecents,
     saveApp,

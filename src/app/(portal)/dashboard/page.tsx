@@ -41,7 +41,7 @@ export default function DashboardPage() {
     toggleFavourite,
     recents,
     clearRecents,
-    registerLaunch,
+    trackExternalLaunch,
     launchUrl,
   } = usePortal();
 
@@ -117,14 +117,15 @@ export default function DashboardPage() {
   // apps flagged openInNewTab (Onelogin login refuses to be framed). window.open must
   // run inside this click, or the popup blocker eats it, so it can't wait for the viewer.
   const launch = (app: PortalApp) => {
-    // ไทล์ Onelogin: เปิด url ของมันตรง ๆ แท็บใหม่ · ไม่บันทึกลงรายการล่าสุด เพราะรายการนั้น
-    // อ้างแคตตาล็อกเรา (apps) จะหา id "onelogin-*" ไม่เจอ
+    // ไทล์ Onelogin: เปิด url ตรง ๆ แท็บใหม่ · trackExternalLaunch บันทึก launch (ให้ insights/
+    // performance เห็น) แต่ไม่ลงรายการล่าสุด เพราะ id "onelogin-*" ไม่มีในแคตตาล็อก
     if (isOnelogin(app)) {
+      trackExternalLaunch(app);
       window.open(app.url, "_blank", "noopener,noreferrer");
       return;
     }
     if (app.openInNewTab) {
-      registerLaunch(app);
+      trackExternalLaunch(app);
       window.open(launchUrl(app), "_blank", "noopener,noreferrer");
       return;
     }
