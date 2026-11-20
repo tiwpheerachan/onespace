@@ -195,23 +195,22 @@ export default function DashboardPage() {
           initial={{ opacity: 0, y: 14 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.08, duration: 0.5 }}
-          className="mt-7 grid grid-cols-1 gap-px overflow-hidden rounded-2xl border border-line bg-line sm:grid-cols-3"
+          className="mt-7 grid grid-cols-1 gap-4 sm:grid-cols-3"
         >
-          {stats.map((s, i) => (
-            <div key={s.label} className="group relative bg-surface p-5 transition-colors hover:bg-canvas/50">
-              <span className="absolute left-0 top-0 h-px w-8 bg-ink/70 opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
-              <div className="flex items-center justify-between text-ink-mute">
-                <s.icon className="h-[15px] w-[15px]" strokeWidth={1.75} />
-                <span className="font-mono text-[10px] tabular-nums tracking-wider">
-                  {String(i + 1).padStart(2, "0")}
-                </span>
+          {stats.map((s) => (
+            <div
+              key={s.label}
+              className="group flex items-center gap-4 rounded-2xl border border-line bg-surface p-4 shadow-card transition hover:-translate-y-0.5 hover:border-brand-200 hover:shadow-lift"
+            >
+              <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-brand-50 text-brand-600 transition-colors group-hover:bg-brand-100 dark:bg-brand-500/10">
+                <s.icon className="h-[19px] w-[19px]" strokeWidth={1.75} />
+              </span>
+              <div className="min-w-0">
+                <p className="font-mono text-[26px] font-semibold leading-none tracking-tight text-ink tabular-nums">
+                  {s.value}
+                </p>
+                <p className="mt-1.5 truncate text-[12px] font-medium text-ink-mute">{s.label}</p>
               </div>
-              <p className="mt-5 font-mono text-[28px] font-medium leading-none tracking-tight text-ink tabular-nums">
-                {s.value}
-              </p>
-              <p className="mt-2 text-[10.5px] font-medium uppercase tracking-[0.13em] text-ink-mute">
-                {s.label}
-              </p>
             </div>
           ))}
         </motion.div>
@@ -272,7 +271,7 @@ export default function DashboardPage() {
               <button
                 key={app.id}
                 onClick={() => canOpen(app) && launch(app)}
-                className="flex items-center gap-3 rounded-xl border border-line bg-surface px-3 py-2.5 text-left transition hover:border-brand-300"
+                className="group flex items-center gap-3 rounded-xl border border-line bg-surface px-3 py-2.5 text-left shadow-card transition hover:-translate-y-0.5 hover:border-brand-200 hover:shadow-lift"
               >
                 <AppLogo app={app} size={32} radius={10} />
                 <span className="min-w-0 flex-1">
@@ -281,6 +280,7 @@ export default function DashboardPage() {
                     {t.dash.openedAt} {relativeTime(at, locale)}
                   </span>
                 </span>
+                <ArrowUpRight className="h-4 w-4 shrink-0 text-ink-mute transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5" />
               </button>
             ))}
           </div>
@@ -295,7 +295,7 @@ export default function DashboardPage() {
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder={t.dash.searchPlaceholder}
-              className="input h-12 pl-11 pr-10 text-[14px]"
+              className="input h-12 pl-11 pr-10 text-[14px] shadow-card"
             />
             <svg
               className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-mute"
