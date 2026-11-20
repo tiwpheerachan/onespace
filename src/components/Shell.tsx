@@ -30,7 +30,6 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { CommandPalette } from "@/components/CommandPalette";
-import { MatrixClock } from "@/components/MatrixClock";
 import { Avatar } from "@/components/ui";
 import { Wordmark } from "@/components/Wordmark";
 import { usePortal } from "@/lib/data/store";
@@ -535,16 +534,11 @@ export function Shell({ children }: { children: React.ReactNode }) {
 
             <div className="ml-auto flex items-center gap-2">
               {!supabaseReady && (
-                <span className="hidden items-center gap-1.5 rounded-full border border-amber-300/60 bg-amber-50 px-2.5 py-1 text-[11px] font-semibold text-amber-700 md:inline-flex dark:bg-amber-500/10 dark:text-amber-300">
+                <span className="mr-1 hidden items-center gap-1.5 rounded-full border border-amber-300/60 bg-amber-50 px-2.5 py-1 text-[11px] font-semibold text-amber-700 md:inline-flex dark:bg-amber-500/10 dark:text-amber-300">
                   <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
                   {t.demo.badge}
                 </span>
               )}
-              <MatrixClock
-                size={5}
-                gap={1}
-                className="mr-1 hidden rounded-xl border border-line bg-surface/70 px-2.5 py-1.5 text-ink-soft md:flex"
-              />
               <HatSwitcher />
               <LanguageMenu />
               <ThemeToggle />

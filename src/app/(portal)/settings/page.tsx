@@ -1,7 +1,7 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { Database, Languages, Link2, Moon, Palette, RotateCcw, Sun, UserCircle2 } from "lucide-react";
+import { Database, IdCard, Languages, Link2, Moon, Palette, RotateCcw, Sun, UserCircle2 } from "lucide-react";
 import { useState } from "react";
 import { PageHeader } from "@/components/PageHeader";
 import { Avatar, Badge } from "@/components/ui";
@@ -17,18 +17,20 @@ function Card({
   title,
   children,
   delay = 0,
+  className,
 }: {
   icon: React.ReactNode;
   title: string;
   children: React.ReactNode;
   delay?: number;
+  className?: string;
 }) {
   return (
     <motion.section
       initial={{ opacity: 0, y: 14 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay, duration: 0.45 }}
-      className="rounded-2xl border border-line bg-surface p-6 shadow-card"
+      className={cn("rounded-2xl border border-line bg-surface p-6 shadow-card", className)}
     >
       <div className="mb-5 flex items-center gap-2.5">
         <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-canvas text-ink-soft">
@@ -38,6 +40,18 @@ function Card({
       </div>
       {children}
     </motion.section>
+  );
+}
+
+/** One labelled read-only fact in the account card. Dimmed + italic when unknown. */
+function Field({ label, value, noData }: { label: string; value?: string | null; noData: string }) {
+  return (
+    <div className="rounded-xl border border-line bg-canvas/50 px-3.5 py-3">
+      <p className="text-[11px] text-ink-mute">{label}</p>
+      <p className={cn("mt-1 text-[13px] font-medium", value ? "text-ink" : "italic text-ink-mute")}>
+        {value || noData}
+      </p>
+    </div>
   );
 }
 
@@ -80,8 +94,17 @@ function LinkOnelogin() {
 }
 
 export default function SettingsPage() {
-  const { t, lang, setLang, theme, setTheme } = usePrefs();
-  const { currentUser, currentRole, supabaseReady, resetDemo, apps, users, roles, viaSso } = usePortal();
+  const { t, locale, lang, setLang, theme, setTheme } = usePrefs();
+  const { currentUser, currentRole, supabaseReady, resetDemo, apps, users, roles, viaSso, ssoProfile } = usePortal();
+
+  const a = t.settings.account;
+  const nd = a.noData;
+  const fmtDate = (d: string | null | undefined) =>
+    d ? new Intl.DateTimeFormat(locale, { dateStyle: "medium" }).format(new Date(d)) : null;
+  const wornHat = ssoProfile?.hats.find((h) => h.id === ssoProfile.hat) ?? ssoProfile?.hats[0];
+  const wornHatLabel = wornHat ? `${wornHat.label}${wornHat.isActing ? ` · ${a.acting}` : ""}` : null;
+  const employmentLabel =
+    ssoProfile?.phase === "clearing" ? a.clearing : ssoProfile?.phase === "normal" ? a.working : null;
 
   return (
     <>
@@ -118,6 +141,29 @@ export default function SettingsPage() {
             </div>
           </dl>
         </Card>
+
+        {ssoProfile && (
+          <Card icon={<IdCard className="h-4 w-4" />} title={a.title} className="lg:col-span-2" delay={0.04}>
+            <p className="mb-4 text-[12px] font-medium text-ink-mute">{a.fromGoodhr}</p>
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <Field label={a.employeeId} value={ssoProfile.employeeId} noData={nd} />
+              <Field label={a.assignment} value={wornHatLabel} noData={nd} />
+              <Field label={t.common.department} value={ssoProfile.department} noData={nd} />
+              <Field label={a.position} value={ssoProfile.title} noData={nd} />
+              <Field label={a.manager} value={null} noData={nd} />
+              <Field label={a.startDate} value={null} noData={nd} />
+              <Field label={a.lastWorkingDate} value={fmtDate(ssoProfile.lastWorkingDate)} noData={nd} />
+              <Field label={a.accessEnd} value={fmtDate(ssoProfile.accessEndDate)} noData={nd} />
+            </div>
+            <div className="mt-4 grid gap-3 border-t border-line pt-4 sm:grid-cols-2 lg:grid-cols-4">
+              <Field label={a.employmentStatus} value={employmentLabel} noData={nd} />
+              <Field label={a.userType} value={ssoProfile.external ? a.guest : a.employee} noData={nd} />
+              <Field label={a.loginMethod} value={ssoProfile.loginMethod} noData={nd} />
+              <Field label={a.roles} value={currentRole?.name} noData={nd} />
+              <Field label={a.createdAt} value={fmtDate(ssoProfile.createdAt)} noData={nd} />
+            </div>
+          </Card>
+        )}
 
         {supabaseReady && ssoEnabledPublic && !viaSso && <LinkOnelogin />}
 

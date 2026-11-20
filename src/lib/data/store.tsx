@@ -6,6 +6,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import {
@@ -42,6 +43,13 @@ interface SsoIdentity {
   /** GoodHR hats from Onelogin (two or more = choose) and the one being worn — set by the server */
   hats: { id: string; label: string; isPrimary: boolean; isActing: boolean }[];
   hat: string | null;
+  /** Display-only profile / employment facts (Onelogin · GoodHR). "" / null = not synced yet. */
+  title: string;
+  loginMethod: string;
+  employeeId: string;
+  lastWorkingDate: string | null;
+  accessEndDate: string | null;
+  createdAt: string | null;
 }
 
 /** Onelogin app ids this person may open (see /api/onelogin/access) — null = unknown. */
@@ -64,7 +72,14 @@ async function loadSsoIdentity(): Promise<SsoIdentity | null> {
   const roles = user?.app_metadata?.onelogin_roles;
   if (!user?.email || !Array.isArray(roles)) return null;
   const meta = user.user_metadata ?? {};
-  const profile = (meta.profile ?? {}) as { avatar_url?: string; department?: string; user_type?: string };
+  const profile = (meta.profile ?? {}) as {
+    avatar_url?: string;
+    department?: string;
+    user_type?: string;
+    title?: string;
+    login_method?: string;
+  };
+  const am = user.app_metadata;
   return {
     email: user.email.toLowerCase(),
     name: String(meta.name || user.email),
@@ -72,12 +87,16 @@ async function loadSsoIdentity(): Promise<SsoIdentity | null> {
     department: profile.department ?? "",
     roleKeys: portalRoleKeys(roles),
     external: profile.user_type === "guest",
-    phase: user.app_metadata.onelogin_phase === "clearing" || user.app_metadata.onelogin_phase === "normal"
-      ? user.app_metadata.onelogin_phase
-      : null,
-    clearingUntil: user.app_metadata.onelogin_clearing_until ?? null,
-    hats: Array.isArray(user.app_metadata.onelogin_hats) ? user.app_metadata.onelogin_hats : [],
-    hat: typeof user.app_metadata.onelogin_hat === "string" ? user.app_metadata.onelogin_hat : null,
+    phase: am.onelogin_phase === "clearing" || am.onelogin_phase === "normal" ? am.onelogin_phase : null,
+    clearingUntil: am.onelogin_clearing_until ?? null,
+    hats: Array.isArray(am.onelogin_hats) ? am.onelogin_hats : [],
+    hat: typeof am.onelogin_hat === "string" ? am.onelogin_hat : null,
+    title: profile.title ?? "",
+    loginMethod: profile.login_method ?? "",
+    employeeId: typeof am.onelogin_employee_id === "string" ? am.onelogin_employee_id : "",
+    lastWorkingDate: am.onelogin_last_working_date ?? null,
+    accessEndDate: am.onelogin_access_end_date ?? null,
+    createdAt: user.created_at ?? null,
   };
 }
 
@@ -103,6 +122,8 @@ interface PortalValue extends PortalSnapshot {
   currentRole: Role | null;
   /** signed in through Onelogin (shows the link back to its app list) */
   viaSso: boolean;
+  /** Full Onelogin identity for display (Settings profile card); null when not signed in via SSO. */
+  ssoProfile: SsoIdentity | null;
   /** an outside person (Onelogin profile.user_type = guest) — badged so staff can tell */
   isExternal: boolean;
   /** set while a resigning person is clearing their work — read-only until then */
@@ -127,6 +148,9 @@ interface PortalValue extends PortalSnapshot {
   toggleFavourite: (appId: string) => void;
   recents: RecentEntry[];
   registerLaunch: (app: PortalApp) => void;
+  /** Open in another tab (Onelogin / external app): logs the launch and banks the
+   *  time until the portal regains focus. Use instead of registerLaunch there. */
+  trackExternalLaunch: (app: PortalApp) => void;
   registerUsage: (app: PortalApp, seconds: number) => void;
   clearRecents: () => void;
 
@@ -574,11 +598,15 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
 
   const registerLaunch = useCallback(
     (app: PortalApp) => {
-      setRecents((prev) => {
-        const next = [{ appId: app.id, at: new Date().toISOString() }, ...prev.filter((r) => r.appId !== app.id)].slice(0, 8);
-        window.localStorage.setItem("nexus.recents", JSON.stringify(next));
-        return next;
-      });
+      // Onelogin apps live outside our catalogue (id "onelogin-*"), so the recents
+      // list — which resolves ids against `apps` — can't show them; only log.
+      if (!String(app.id).startsWith("onelogin-")) {
+        setRecents((prev) => {
+          const next = [{ appId: app.id, at: new Date().toISOString() }, ...prev.filter((r) => r.appId !== app.id)].slice(0, 8);
+          window.localStorage.setItem("nexus.recents", JSON.stringify(next));
+          return next;
+        });
+      }
       log("app.launch", app.name);
     },
     [log],
@@ -590,11 +618,38 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
   const registerUsage = useCallback(
     (app: PortalApp, seconds: number) => {
       const s = Math.round(seconds);
-      if (s < 3) return; // ignore accidental blips
+      if (s < 3 || s > 4 * 3600) return; // ignore blips and tabs left open all day
       log(`app.usage:${s}`, app.name);
     },
     [log],
   );
+
+  // Apps that open in another tab (Onelogin / external) can't be timed from inside
+  // an iframe. Instead record the launch now and bank the elapsed time when the
+  // portal tab regains focus — a good-enough proxy for time spent in the app.
+  const pendingExternal = useRef<{ app: PortalApp; at: number } | null>(null);
+  const trackExternalLaunch = useCallback(
+    (app: PortalApp) => {
+      registerLaunch(app);
+      pendingExternal.current = { app, at: Date.now() };
+    },
+    [registerLaunch],
+  );
+  useEffect(() => {
+    const flush = () => {
+      if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
+      const p = pendingExternal.current;
+      if (!p) return;
+      pendingExternal.current = null;
+      registerUsage(p.app, (Date.now() - p.at) / 1000); // registerUsage drops blips / overlong
+    };
+    window.addEventListener("focus", flush);
+    document.addEventListener("visibilitychange", flush);
+    return () => {
+      window.removeEventListener("focus", flush);
+      document.removeEventListener("visibilitychange", flush);
+    };
+  }, [registerUsage]);
 
   const clearRecents = useCallback(() => {
     setRecents([]);
@@ -621,6 +676,7 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
     currentUser,
     currentRole,
     viaSso: ssoSelf,
+    ssoProfile: ssoSelf ? sso : null,
     isExternal: ssoSelf && Boolean(sso?.external),
     clearingUntil: clearing ? (sso?.clearingUntil ?? null) : null,
     assignments,
@@ -637,6 +693,7 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
     toggleFavourite,
     recents,
     registerLaunch,
+    trackExternalLaunch,
     registerUsage,
     clearRecents,
     saveApp,
