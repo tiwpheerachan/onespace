@@ -2,7 +2,6 @@
 
 import { AnimatePresence, motion } from "framer-motion";
 import {
-  Activity,
   ArrowUpRight,
   Clock,
   Info,
@@ -109,7 +108,6 @@ export default function DashboardPage() {
       });
   }, [catalogue, category, query, favourites]);
 
-  const accessible = apps.filter(canOpen);
   const pinned = apps.filter((a) => favourites.includes(a.id));
   const recentApps = recents
     .map((r) => ({ app: apps.find((a) => a.id === r.appId), at: r.at }))
@@ -133,11 +131,12 @@ export default function DashboardPage() {
     router.push(`/app/${app.id}`);
   };
 
+  // "เข้าถึงได้" = แคตตาล็อกที่มีสิทธิ์ + แอป Onelogin (ทุกตัวเปิดได้) — ตรงกับไทล์ที่เห็นจริง
+  const openableApps = catalogue.filter((a) => isOnelogin(a) || canOpen(a));
   const stats = [
-    { label: t.dash.statApps, value: accessible.length, icon: LayoutGrid },
+    { label: t.dash.statApps, value: openableApps.length, icon: LayoutGrid },
     { label: t.dash.statPinned, value: pinned.length, icon: Pin },
     { label: t.dash.statUsers, value: users.filter((u) => u.status === "active").length, icon: UsersIcon },
-    { label: t.dash.statUptime, value: "99.9%", icon: Activity },
   ];
 
   return (
@@ -195,7 +194,7 @@ export default function DashboardPage() {
           initial={{ opacity: 0, y: 14 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.08, duration: 0.5 }}
-          className="mt-7 grid grid-cols-2 gap-px overflow-hidden rounded-2xl border border-line bg-line sm:grid-cols-4"
+          className="mt-7 grid grid-cols-1 gap-px overflow-hidden rounded-2xl border border-line bg-line sm:grid-cols-3"
         >
           {stats.map((s, i) => (
             <div key={s.label} className="group relative bg-surface p-5 transition-colors hover:bg-canvas/50">

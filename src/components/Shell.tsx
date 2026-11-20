@@ -3,7 +3,6 @@
 import { AnimatePresence, motion } from "framer-motion";
 import {
   BarChart3,
-  Boxes,
   Check,
   ChevronDown,
   ChevronUp,
@@ -369,7 +368,6 @@ export function Shell({ children }: { children: React.ReactNode }) {
       label: t.nav.admin,
       items: [
         { href: "/admin/insights", label: t.nav.insights, icon: BarChart3, show: can("audit.view") },
-        { href: "/admin/apps", label: t.nav.apps, icon: Boxes, show: can("app.manage") },
         {
           href: "/admin/access",
           label: t.nav.access,
