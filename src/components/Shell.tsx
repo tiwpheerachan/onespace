@@ -381,6 +381,12 @@ export function Shell({ children }: { children: React.ReactNode }) {
     .map((s) => ({ ...s, items: s.items.filter((i) => i.show) }))
     .filter((s) => s.items.length);
 
+  // ป้ายหน้าปัจจุบัน (ไอคอน + ชื่อ) ที่โชว์ในแถบบน
+  const activeNav = sections
+    .flatMap((s) => s.items)
+    .find((i) => pathname === i.href || pathname.startsWith(i.href + "/"));
+  const ActiveNavIcon = activeNav?.icon;
+
   const navList = (collapsed: boolean, layoutIdSuffix: string) => (
     <nav className={cn("flex flex-1 flex-col gap-7", collapsed ? "px-2.5" : "px-3")}>
       {sections.map((section) => (
@@ -490,6 +496,13 @@ export function Shell({ children }: { children: React.ReactNode }) {
             >
               <Menu className="h-[18px] w-[18px]" />
             </button>
+
+            {activeNav && ActiveNavIcon && (
+              <span className="inline-flex items-center gap-1.5 text-[13.5px] font-semibold text-brand-600 dark:text-brand-400">
+                <ActiveNavIcon className="h-[18px] w-[18px]" strokeWidth={2} />
+                {activeNav.label}
+              </span>
+            )}
 
             <div className="ml-auto flex items-center gap-2">
               <HatSwitcher />
