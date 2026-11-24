@@ -104,7 +104,8 @@ export default function DashboardPage() {
       });
   }, [catalogue, query, favourites]);
 
-  const pinned = apps.filter((a) => favourites.includes(a.id));
+  // รวมแอป Onelogin ด้วย (catalogue = apps + Onelogin) — favourites เก็บใน localStorage จึงปักได้ทุกชนิด
+  const pinned = catalogue.filter((a) => favourites.includes(a.id));
   const recentApps = recents
     .map((r) => ({ app: apps.find((a) => a.id === r.appId), at: r.at }))
     .filter((r): r is { app: PortalApp; at: string } => Boolean(r.app));
@@ -244,13 +245,17 @@ export default function DashboardPage() {
                   animate={{ opacity: 1, scale: 1 }}
                   exit={{ opacity: 0, scale: 0.94 }}
                   whileHover={{ y: -3 }}
-                  onClick={() => canOpen(app) && launch(app)}
+                  onClick={() => (isOnelogin(app) || canOpen(app)) && launch(app)}
                   className="group flex items-center gap-3 rounded-2xl border border-line bg-surface py-2.5 pl-2.5 pr-4 shadow-card transition-shadow hover:shadow-lift"
                 >
                   <AppLogo app={app} size={36} radius={11} />
                   <span className="text-left">
                     <span className="block text-[13px] font-semibold text-ink">{app.name}</span>
-                    <span className="block text-[11px] text-ink-mute">{t.cat[app.category]}</span>
+                    <span className="block text-[11px] text-ink-mute">
+                      {isOnelogin(app)
+                        ? app.url.replace(/^https?:\/\//, "").replace(/\/$/, "")
+                        : t.cat[app.category]}
+                    </span>
                   </span>
                   <ArrowUpRight className="h-4 w-4 text-ink-mute transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5" />
                 </motion.button>
@@ -353,12 +358,6 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        <SectionTitle
-          icon={<LayoutGrid className="h-4 w-4" />}
-          title={t.dash.allApps}
-          count={`${visible.length} ${t.common.of} ${catalogue.length}`}
-        />
-
         {visible.length === 0 ? (
           <EmptyState icon={<SearchX className="h-6 w-6" />} title={t.dash.empty} body={t.dash.emptyHint} />
         ) : view === "grid" ? (
@@ -372,7 +371,7 @@ export default function DashboardPage() {
                   index={i}
                   allowed={ol || canOpen(app)}
                   pinned={favourites.includes(app.id)}
-                  onPin={ol ? undefined : () => toggleFavourite(app.id)}
+                  onPin={() => toggleFavourite(app.id)}
                   onLaunch={() => launch(app)}
                   onDetails={() => setDetailApp(app)}
                   caption={ol ? app.url.replace(/^https?:\/\//, "").replace(/\/$/, "") : undefined}
@@ -418,23 +417,21 @@ export default function DashboardPage() {
                   <span className="hidden w-24 shrink-0 truncate font-mono text-[11px] text-ink-mute lg:block">
                     {app.version && `v${app.version}`}
                   </span>
-                  {!ol && (
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        toggleFavourite(app.id);
-                      }}
-                      title={favourites.includes(app.id) ? t.dash.unpin : t.dash.pin}
-                      className={cn(
-                        "rounded-lg p-1.5 transition",
-                        favourites.includes(app.id)
-                          ? "text-brand-600"
-                          : "text-ink-mute opacity-0 group-hover:opacity-100",
-                      )}
-                    >
-                      <Pin className="h-4 w-4" />
-                    </button>
-                  )}
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      toggleFavourite(app.id);
+                    }}
+                    title={favourites.includes(app.id) ? t.dash.unpin : t.dash.pin}
+                    className={cn(
+                      "rounded-lg p-1.5 transition",
+                      favourites.includes(app.id)
+                        ? "text-brand-600"
+                        : "text-ink-mute opacity-0 group-hover:opacity-100",
+                    )}
+                  >
+                    <Pin className="h-4 w-4" />
+                  </button>
                   <button
                     onClick={(e) => {
                       e.stopPropagation();

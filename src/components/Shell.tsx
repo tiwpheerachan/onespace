@@ -5,8 +5,6 @@ import {
   BarChart3,
   Check,
   ChevronDown,
-  ChevronUp,
-  Command,
   Gauge,
   Github,
   KeyRound,
@@ -342,12 +340,11 @@ function usePersistentBool(key: string, initial: boolean) {
 
 export function Shell({ children }: { children: React.ReactNode }) {
   const { t, locale } = usePrefs();
-  const { can, supabaseReady, apps, writeError, dismissWriteError, clearingUntil } = usePortal();
+  const { can, writeError, dismissWriteError, clearingUntil } = usePortal();
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = usePersistentBool("nav.sidebar.collapsed", false);
-  const [headerHidden, setHeaderHidden] = usePersistentBool("nav.header.hidden", false);
 
   useEffect(() => setMobileOpen(false), [pathname]);
 
@@ -451,24 +448,6 @@ export function Shell({ children }: { children: React.ReactNode }) {
           </button>
         </div>
         {navList(sidebarCollapsed, "desktop")}
-        {!sidebarCollapsed && (
-          <div className="mt-6 px-6">
-            <div className="rounded-xl border border-line bg-canvas/70 p-3.5">
-              <p className="text-[11.5px] font-semibold text-ink">{t.brand.company}</p>
-              <p className="mt-0.5 text-[11px] leading-relaxed text-ink-mute">
-                {apps.length} {t.apps.count}
-              </p>
-              <div className="mt-2.5 h-1 overflow-hidden rounded-full bg-line">
-                <motion.div
-                  initial={{ width: 0 }}
-                  animate={{ width: "86%" }}
-                  transition={{ duration: 1.2, ease: [0.22, 1, 0.36, 1] }}
-                  className="h-full rounded-full bg-gradient-to-r from-brand-600 to-teal-500"
-                />
-              </div>
-            </div>
-          </div>
-        )}
       </aside>
 
       {/* ── mobile drawer ───────────────────────────────── */}
@@ -503,16 +482,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
 
       {/* ── main column ─────────────────────────────────── */}
       <div className="flex min-w-0 flex-1 flex-col">
-        {headerHidden && (
-          <button
-            onClick={() => setHeaderHidden(false)}
-            title={t.nav.showBar}
-            className="sticky top-0 z-40 flex h-6 w-full items-center justify-center border-b border-line bg-surface/80 text-ink-mute backdrop-blur transition hover:text-ink"
-          >
-            <ChevronDown className="h-4 w-4" />
-          </button>
-        )}
-        <header className={cn("sticky top-0 z-40 border-b border-line glass", headerHidden && "hidden")}>
+        <header className="sticky top-0 z-40 border-b border-line glass">
           <div className="flex h-16 items-center gap-3 px-4 sm:px-6 lg:px-8">
             <button
               onClick={() => setMobileOpen(true)}
@@ -521,34 +491,10 @@ export function Shell({ children }: { children: React.ReactNode }) {
               <Menu className="h-[18px] w-[18px]" />
             </button>
 
-            <button
-              onClick={() => setPaletteOpen(true)}
-              className="group flex h-9 flex-1 items-center gap-2.5 rounded-xl border border-line bg-surface px-3 text-left text-[13px] text-ink-mute transition hover:border-brand-300 sm:max-w-md"
-            >
-              <Command className="h-4 w-4" />
-              <span className="flex-1 truncate">{t.nav.palette}</span>
-              <kbd className="hidden rounded-md border border-line px-1.5 py-0.5 text-[10.5px] font-semibold sm:block">
-                ⌘K
-              </kbd>
-            </button>
-
             <div className="ml-auto flex items-center gap-2">
-              {!supabaseReady && (
-                <span className="mr-1 hidden items-center gap-1.5 rounded-full border border-amber-300/60 bg-amber-50 px-2.5 py-1 text-[11px] font-semibold text-amber-700 md:inline-flex dark:bg-amber-500/10 dark:text-amber-300">
-                  <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
-                  {t.demo.badge}
-                </span>
-              )}
               <HatSwitcher />
               <LanguageMenu />
               <ThemeToggle />
-              <button
-                onClick={() => setHeaderHidden(true)}
-                title={t.nav.hideBar}
-                className="hidden h-9 w-9 items-center justify-center rounded-lg text-ink-mute transition hover:bg-canvas hover:text-ink sm:flex"
-              >
-                <ChevronUp className="h-[18px] w-[18px]" />
-              </button>
               <span className="mx-1 hidden h-6 w-px bg-line sm:block" />
               <UserMenu />
             </div>
