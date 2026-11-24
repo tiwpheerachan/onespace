@@ -13,7 +13,7 @@ interface Props {
   app: PortalApp;
   allowed: boolean;
   pinned: boolean;
-  /** omitted = no pin button (Onelogin tiles aren't in our catalogue, so they can't be pinned) */
+  /** omitted = no pin button; favourites live in localStorage so any app (incl. Onelogin) can be pinned */
   onPin?: () => void;
   onLaunch: () => void;
   /** omitted = no details button */
