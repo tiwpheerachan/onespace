@@ -2,6 +2,7 @@
 
 import { AnimatePresence, motion } from "framer-motion";
 import {
+  ArrowRight,
   ArrowUpRight,
   Clock,
   Info,
@@ -22,7 +23,7 @@ import { Badge, EmptyState, SectionTitle } from "@/components/ui";
 import { usePortal } from "@/lib/data/store";
 import { usePrefs } from "@/lib/i18n/provider";
 import { useOneloginApps } from "@/lib/onelogin-apps";
-import { APP_CATEGORIES, type AppCategory, type PortalApp } from "@/lib/types";
+import { type PortalApp } from "@/lib/types";
 import { cn, normalise, relativeTime } from "@/lib/utils";
 
 type View = "grid" | "list";
@@ -35,7 +36,6 @@ export default function DashboardPage() {
     roles,
     users,
     currentUser,
-    currentRole,
     canOpen,
     favourites,
     toggleFavourite,
@@ -43,10 +43,10 @@ export default function DashboardPage() {
     clearRecents,
     trackExternalLaunch,
     launchUrl,
+    can,
   } = usePortal();
 
   const [query, setQuery] = useState("");
-  const [category, setCategory] = useState<AppCategory | "all">("all");
   const [view, setView] = useState<View>("grid");
   const [detailApp, setDetailApp] = useState<PortalApp | null>(null);
 
@@ -94,10 +94,6 @@ export default function DashboardPage() {
   const visible = useMemo(() => {
     const q = normalise(query.trim());
     return catalogue
-      // แอป Onelogin ไม่มีหมวด → โผล่เฉพาะตอนเลือก "ทั้งหมด"
-      .filter((a) =>
-        category === "all" ? true : !String(a.id).startsWith("onelogin-") && a.category === category,
-      )
       .filter((a) =>
         q ? normalise(`${a.name} ${a.description} ${a.owner} ${a.category} ${a.shortName}`).includes(q) : true,
       )
@@ -106,7 +102,7 @@ export default function DashboardPage() {
         const fb = favourites.includes(b.id) ? 0 : 1;
         return fa - fb || a.sortOrder - b.sortOrder;
       });
-  }, [catalogue, category, query, favourites]);
+  }, [catalogue, query, favourites]);
 
   const pinned = apps.filter((a) => favourites.includes(a.id));
   const recentApps = recents
@@ -134,10 +130,36 @@ export default function DashboardPage() {
 
   // "เข้าถึงได้" = แคตตาล็อกที่มีสิทธิ์ + แอป Onelogin (ทุกตัวเปิดได้) — ตรงกับไทล์ที่เห็นจริง
   const openableApps = catalogue.filter((a) => isOnelogin(a) || canOpen(a));
+  const scrollToCatalogue = () =>
+    document.getElementById("catalogue")?.scrollIntoView({ behavior: "smooth", block: "start" });
   const stats = [
-    { label: t.dash.statApps, value: openableApps.length, icon: LayoutGrid },
-    { label: t.dash.statPinned, value: pinned.length, icon: Pin },
-    { label: t.dash.statUsers, value: users.filter((u) => u.status === "active").length, icon: UsersIcon },
+    {
+      label: t.dash.statApps,
+      value: openableApps.length,
+      icon: LayoutGrid,
+      chip: "bg-brand-500 text-white",
+      link: "text-brand-600 hover:text-brand-700 dark:text-brand-400",
+      linkLabel: t.dash.statViewAll,
+      onLink: scrollToCatalogue,
+    },
+    {
+      label: t.dash.statPinned,
+      value: pinned.length,
+      icon: Pin,
+      chip: "bg-amber-500 text-white",
+      link: "text-amber-600 hover:text-amber-700 dark:text-amber-400",
+      linkLabel: t.dash.statManagePins,
+      onLink: scrollToCatalogue,
+    },
+    {
+      label: t.dash.statUsers,
+      value: users.filter((u) => u.status === "active").length,
+      icon: UsersIcon,
+      chip: "bg-emerald-500 text-white",
+      link: "text-emerald-600 hover:text-emerald-700 dark:text-emerald-400",
+      linkLabel: t.dash.statViewInsights,
+      onLink: can("audit.view") ? () => router.push("/admin/insights") : null,
+    },
   ];
 
   return (
@@ -151,43 +173,11 @@ export default function DashboardPage() {
           className="flex flex-wrap items-end justify-between gap-5"
         >
           <div>
-            <p className="mb-2.5 inline-flex items-center gap-2 rounded-md border border-line bg-surface px-2.5 py-1 font-mono text-[10.5px] font-medium uppercase tracking-[0.12em] text-ink-soft">
-              <span className="relative flex h-1.5 w-1.5">
-                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-500 opacity-60" />
-                <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-emerald-500" />
-              </span>
-              {currentRole?.name}
-            </p>
             <h1 className="heading text-[clamp(1.6rem,2.6vw,2.15rem)] leading-tight text-ink">
               {greeting}, {currentUser?.name?.split(" ")[0]}
               <span className="ml-2.5 inline-block origin-[70%_75%] animate-wave">👋</span>
             </h1>
             <p className="mt-1.5 text-[13.5px] text-ink-soft">{t.dash.subtitle}</p>
-          </div>
-
-          <div className="flex items-center gap-1 rounded-xl border border-line bg-surface p-1">
-            {(["grid", "list"] as View[]).map((v) => (
-              <button
-                key={v}
-                onClick={() => setView(v)}
-                className={cn(
-                  "relative flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[12.5px] font-semibold transition",
-                  view === v ? "text-ink" : "text-ink-mute hover:text-ink-soft",
-                )}
-              >
-                {view === v && (
-                  <motion.span
-                    layoutId="view-toggle"
-                    transition={{ type: "spring", stiffness: 420, damping: 32 }}
-                    className="absolute inset-0 rounded-lg bg-canvas"
-                  />
-                )}
-                <span className="relative flex items-center gap-1.5">
-                  {v === "grid" ? <LayoutGrid className="h-3.5 w-3.5" /> : <Rows3 className="h-3.5 w-3.5" />}
-                  {v === "grid" ? t.dash.grid : t.dash.list}
-                </span>
-              </button>
-            ))}
           </div>
         </motion.div>
 
@@ -200,17 +190,37 @@ export default function DashboardPage() {
           {stats.map((s) => (
             <div
               key={s.label}
-              className="group flex items-center gap-4 rounded-2xl border border-line bg-surface p-4 shadow-card transition hover:-translate-y-0.5 hover:border-brand-200 hover:shadow-lift"
+              className="group flex flex-col justify-between rounded-2xl border border-line bg-surface p-5 shadow-card transition hover:-translate-y-0.5 hover:border-brand-200 hover:shadow-lift"
             >
-              <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-brand-50 text-brand-600 transition-colors group-hover:bg-brand-100 dark:bg-brand-500/10">
-                <s.icon className="h-[19px] w-[19px]" strokeWidth={1.75} />
-              </span>
-              <div className="min-w-0">
-                <p className="font-mono text-[26px] font-semibold leading-none tracking-tight text-ink tabular-nums">
-                  {s.value}
-                </p>
-                <p className="mt-1.5 truncate text-[12px] font-medium text-ink-mute">{s.label}</p>
+              <div className="flex items-start gap-3.5">
+                <span
+                  className={cn(
+                    "flex h-11 w-11 shrink-0 items-center justify-center rounded-xl shadow-sm transition-transform group-hover:scale-105",
+                    s.chip,
+                  )}
+                >
+                  <s.icon className="h-5 w-5" strokeWidth={2} />
+                </span>
+                <div className="min-w-0">
+                  <p className="truncate text-[12.5px] font-medium text-ink-mute">{s.label}</p>
+                  <p className="mt-0.5 font-mono text-[27px] font-bold leading-tight tracking-tight text-ink tabular-nums">
+                    {s.value}
+                  </p>
+                </div>
               </div>
+              {s.onLink && (
+                <button
+                  type="button"
+                  onClick={s.onLink}
+                  className={cn(
+                    "group/link mt-4 inline-flex items-center gap-1 self-start text-[12.5px] font-semibold transition",
+                    s.link,
+                  )}
+                >
+                  {s.linkLabel}
+                  <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover/link:translate-x-0.5" />
+                </button>
+              )}
             </div>
           ))}
         </motion.div>
@@ -288,9 +298,9 @@ export default function DashboardPage() {
       )}
 
       {/* ── catalogue (รวมแอป Onelogin ของคนนี้ไว้ด้วย) ──── */}
-      <section>
-        <div className="mb-5 flex flex-col gap-3">
-          <div className="relative">
+      <section id="catalogue" className="scroll-mt-24">
+        <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center">
+          <div className="relative min-w-0 flex-1">
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
@@ -317,28 +327,29 @@ export default function DashboardPage() {
             )}
           </div>
 
-          <div className="flex flex-wrap items-center gap-2">
-            <button
-              onClick={() => setCategory("all")}
-              className={cn("chip", category === "all" && "chip-active")}
-            >
-              {t.dash.categoryAll}
-              <span className="opacity-60">{catalogue.length}</span>
-            </button>
-            {APP_CATEGORIES.map((c) => {
-              const n = apps.filter((a) => a.category === c).length;
-              if (!n) return null;
-              return (
-                <button
-                  key={c}
-                  onClick={() => setCategory(c)}
-                  className={cn("chip", category === c && "chip-active")}
-                >
-                  {t.cat[c]}
-                  <span className="opacity-60">{n}</span>
-                </button>
-              );
-            })}
+          <div className="flex h-12 shrink-0 items-center gap-1 self-stretch rounded-xl border border-line bg-surface p-1 shadow-card sm:self-auto">
+            {(["grid", "list"] as View[]).map((v) => (
+              <button
+                key={v}
+                onClick={() => setView(v)}
+                className={cn(
+                  "relative flex flex-1 items-center justify-center gap-1.5 rounded-lg px-3.5 py-2 text-[12.5px] font-semibold transition sm:flex-none",
+                  view === v ? "text-ink" : "text-ink-mute hover:text-ink-soft",
+                )}
+              >
+                {view === v && (
+                  <motion.span
+                    layoutId="view-toggle"
+                    transition={{ type: "spring", stiffness: 420, damping: 32 }}
+                    className="absolute inset-0 rounded-lg bg-canvas"
+                  />
+                )}
+                <span className="relative flex items-center gap-1.5">
+                  {v === "grid" ? <LayoutGrid className="h-3.5 w-3.5" /> : <Rows3 className="h-3.5 w-3.5" />}
+                  {v === "grid" ? t.dash.grid : t.dash.list}
+                </span>
+              </button>
+            ))}
           </div>
         </div>
 
