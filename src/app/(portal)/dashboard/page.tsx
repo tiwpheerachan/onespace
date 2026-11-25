@@ -85,8 +85,14 @@ export default function DashboardPage() {
       }));
   }, [oneloginApps, apps]);
 
-  // ระบุไทล์ Onelogin จาก id ที่เราตั้ง — เปิดได้เสมอ · เปิดแท็บใหม่ · ไม่ปัก/ไม่มีรายละเอียด
+  // ระบุไทล์ Onelogin จาก id ที่เราตั้ง — เปิดแท็บใหม่ · ไม่ปัก/ไม่มีรายละเอียด
   const isOnelogin = (a: PortalApp) => typeof a.id === "string" && a.id.startsWith("onelogin-");
+  // ไทล์ Onelogin ที่ไม่มีสิทธิ์ (allowed=false) โผล่ให้เห็นแต่เป็นไทล์ล็อก — เจ้าของ 25 พ.ย. 2569
+  const lockedOnelogin = useMemo(
+    () => new Set(oneloginApps.filter((a) => !a.allowed).map((a) => `onelogin-${a.id}`)),
+    [oneloginApps],
+  );
+  const openable = (a: PortalApp) => (isOnelogin(a) ? !lockedOnelogin.has(String(a.id)) : canOpen(a));
 
   // "แอปทั้งหมด" = แอป Onelogin ของคนนี้ + แคตตาล็อกของเรา ชุดเดียว
   const catalogue = useMemo(() => [...oneloginAsApps, ...apps], [oneloginAsApps, apps]);
@@ -114,6 +120,7 @@ export default function DashboardPage() {
   // apps flagged openInNewTab (Onelogin login refuses to be framed). window.open must
   // run inside this click, or the popup blocker eats it, so it can't wait for the viewer.
   const launch = (app: PortalApp) => {
+    if (!openable(app)) return;
     // ไทล์ Onelogin: เปิด url ตรง ๆ แท็บใหม่ · trackExternalLaunch บันทึก launch (ให้ insights/
     // performance เห็น) แต่ไม่ลงรายการล่าสุด เพราะ id "onelogin-*" ไม่มีในแคตตาล็อก
     if (isOnelogin(app)) {
@@ -129,8 +136,8 @@ export default function DashboardPage() {
     router.push(`/app/${app.id}`);
   };
 
-  // "เข้าถึงได้" = แคตตาล็อกที่มีสิทธิ์ + แอป Onelogin (ทุกตัวเปิดได้) — ตรงกับไทล์ที่เห็นจริง
-  const openableApps = catalogue.filter((a) => isOnelogin(a) || canOpen(a));
+  // "เข้าถึงได้" = แคตตาล็อกที่มีสิทธิ์ + แอป Onelogin ที่ไม่ล็อก — ตรงกับไทล์ที่เห็นจริง
+  const openableApps = catalogue.filter(openable);
   const scrollToCatalogue = () =>
     document.getElementById("catalogue")?.scrollIntoView({ behavior: "smooth", block: "start" });
   const stats = [
@@ -245,7 +252,7 @@ export default function DashboardPage() {
                   animate={{ opacity: 1, scale: 1 }}
                   exit={{ opacity: 0, scale: 0.94 }}
                   whileHover={{ y: -3 }}
-                  onClick={() => (isOnelogin(app) || canOpen(app)) && launch(app)}
+                  onClick={() => openable(app) && launch(app)}
                   className="group flex items-center gap-3 rounded-2xl border border-line bg-surface py-2.5 pl-2.5 pr-4 shadow-card transition-shadow hover:shadow-lift"
                 >
                   <AppLogo app={app} size={36} radius={11} />
@@ -369,7 +376,7 @@ export default function DashboardPage() {
                   key={app.id}
                   app={app}
                   index={i}
-                  allowed={ol || canOpen(app)}
+                  allowed={openable(app)}
                   pinned={favourites.includes(app.id)}
                   onPin={() => toggleFavourite(app.id)}
                   onLaunch={() => launch(app)}
@@ -383,7 +390,7 @@ export default function DashboardPage() {
           <div className="overflow-hidden rounded-2xl border border-line bg-surface">
             {visible.map((app, i) => {
               const ol = isOnelogin(app);
-              const allowed = ol || canOpen(app);
+              const allowed = openable(app);
               const open = () => (allowed ? launch(app) : setDetailApp(app));
               return (
                 <motion.div
@@ -462,7 +469,7 @@ export default function DashboardPage() {
 
       <AppDetail
         app={detailApp}
-        allowed={detailApp ? isOnelogin(detailApp) || canOpen(detailApp) : false}
+        allowed={detailApp ? openable(detailApp) : false}
         roles={roles}
         onClose={() => setDetailApp(null)}
         onLaunch={(a) => {

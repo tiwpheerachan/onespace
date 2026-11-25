@@ -6,7 +6,7 @@ import { requestUser } from "@/lib/supabase/request-user";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-/** One tile: an app Onelogin controls centrally that this person can open.
+/** One tile: an app Onelogin publishes to ONE SPACE — openable, or locked when `allowed` is false.
  *  The look fields (colour … badge) let us draw the card exactly like Onelogin's own launcher. */
 export interface OneloginApp {
   id: number;
@@ -28,6 +28,8 @@ export interface OneloginApp {
   /** external avatar URL (Lark/Google) — safe to use directly */
   ownerAvatar: string | null;
   badge: string;
+  /** false = shown as a locked tile (no right to open it) — see include_locked below */
+  allowed: boolean;
 }
 
 /**
@@ -56,7 +58,9 @@ export async function GET(req: NextRequest) {
     const r = await fetch(`${cfg.baseUrl}/api/v1/apps/mine`, {
       method: "POST",
       headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ user: link.onelogin_sub }),
+      // include_locked (เจ้าของ 25 พ.ย. 2569): เห็นทุกแอปที่เผยแพร่ แต่กดเข้าได้เฉพาะที่มีสิทธิ์
+      // — แอปที่ไม่มีสิทธิ์มากับ allowed=false แล้ววาดเป็นไทล์ล็อก
+      body: JSON.stringify({ user: link.onelogin_sub, include_locked: true }),
       signal: AbortSignal.timeout(6000),
     });
     if (!r.ok) {
@@ -78,6 +82,8 @@ export async function GET(req: NextRequest) {
         ownerName: a.ownerName ?? null,
         ownerAvatar: a.ownerAvatar ?? null,
         badge: a.badge || "SSO",
+        // Onelogin รุ่นที่ยังไม่มีช่องนี้ ส่งมาแต่แอปที่เปิดได้ — ไม่มีค่า = เปิดได้
+        allowed: a.allowed !== false,
       }));
     return NextResponse.json({ apps });
   } catch (e) {
